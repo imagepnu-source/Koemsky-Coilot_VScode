@@ -3,15 +3,42 @@ import React from 'react';
 import type {
   AllCfg, BoxCfg, SmallBoxCfg, FontCfg, LevelBadgeCfg, AgeBadgeCfg, DropdownCfg
 } from '@/lib/ui-design';
-import { loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS } from '@/lib/ui-design';
+import { loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS, asFont } from '@/lib/ui-design';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import type { BoxStyle, TextStyle } from "@/lib/ui-types";
 
 export default function UIDesignDialog() {
   const [open, setOpen] = React.useState(false);
-  const [cfg, setCfg] = React.useState<AllCfg>(() => {
-    try { return loadUIDesignCfg(); } catch { return {} as AllCfg; }
-  });
+  // cfg is managed by reducer below (loadUIDesignCfg used in initializer)
+  type Action =
+    | { type: 'SET'; key: keyof AllCfg; value: any }
+    | { type: 'RESET'; value: AllCfg }
+
+  function cfgReducer(state: AllCfg, action: Action): AllCfg {
+    switch (action.type) {
+      case 'SET':
+        return { ...state, [action.key]: action.value } as AllCfg
+      case 'RESET':
+        return action.value
+      default:
+        return state
+    }
+  }
+
+  const [cfg, dispatch] = React.useReducer(
+    cfgReducer,
+    undefined as unknown as AllCfg,
+    () => {
+      try {
+        return loadUIDesignCfg()
+      } catch {
+        return {} as AllCfg
+      }
+    },
+  )
+
+  const update = <K extends keyof AllCfg>(k: K, v: AllCfg[K]) =>
+    dispatch({ type: 'SET', key: k, value: v })
 
   // --- ADD: modal position/size + drag state/handlers (insert if missing) ---
   const [modalSize, setModalSize] = React.useState({ width: 0, height: 0 });
@@ -68,7 +95,6 @@ export default function UIDesignDialog() {
   };
   // --- END ADD ---
   React.useEffect(() => { applyUIDesignCSS(cfg); }, [cfg]);
-  const update = <K extends keyof AllCfg>(k: K, v: AllCfg[K]) => setCfg(p => ({ ...p, [k]: v }));
   const persist = () => saveUIDesignCfg(cfg);
 
   return (
@@ -128,8 +154,8 @@ export default function UIDesignDialog() {
                         <div className="font-semibold mb-2">상단 컨테이너 (미리보기)</div>
                         <BoxSection title="상단 컨테이너 속성" value={cfg.topHeaderBox} onChange={v=>update('topHeaderBox', v)} />
                         <div className="grid grid-cols-1 gap-3 mt-3">
-                          <FontSection title="Title" value={asFont(cfg.title)} onChange={v=>update('title', v)} />
-                          <FontSection title="이름·나이(NameBio)" value={asFont(cfg.namebio)} onChange={v=>update('namebio', v)} />
+                          <FontSection title="Title" value={cfg.title} onChange={v=>update('title', v)} />
+                          <FontSection title="이름·나이(NameBio)" value={cfg.namebio} onChange={v=>update('namebio', v)} />
                           {/* 순서: 폰트(Size→Bold→Color) */}
                           <FontSection title="발달 나이(DevAge)" value={asFont(cfg.devage)} onChange={v=>update('devage', v)} />
                                               <div className="p-3 rounded-lg border bg-white">
@@ -246,9 +272,21 @@ function FontSection(props: { title: string; value: FontCfg; onChange: (v: FontC
     <div className="p-3 rounded-lg border bg-white">
       <div className="font-semibold mb-2">{title}</div>
       <div className="grid grid-cols-4 gap-3">
-        <LabeledNumber label="Size" value={value.size} onChange={n=>onChange({ ...value, size: n })} />
-        <LabeledCheckbox label="Bold" checked={value.bold} onChange={b=>onChange({ ...value, bold: b })} />
-        <LabeledColor label="Color" value={value.color} onChange={c=>onChange({ ...value, color: c })} />
+        <LabeledNumber
+          label="Size"
+          value={value.size ?? 12}
+          onChange={(n) => onChange({ ...value, size: n })}
+        />
+        <LabeledCheckbox
+          label="Bold"
+          checked={value.bold ?? false}
+          onChange={(b) => onChange({ ...value, bold: b })}
+        />
+        <LabeledColor
+          label="Color"
+          value={value.color ?? '#000000'}
+          onChange={(c) => onChange({ ...value, color: c })}
+        />
       </div>
     </div>
   );
@@ -323,13 +361,13 @@ function DropdownSection(props: { value: DropdownCfg; onChange: (v: DropdownCfg)
     <div className="p-3 rounded-lg border bg-white">
       <div className="font-semibold mb-2">Dropdown</div>
       <div className="grid grid-cols-4 gap-3">
-        <LabeledNumber label="Size" value={value.size} onChange={n=>onChange({ ...value, size: n })} />
-        <LabeledCheckbox label="Bold" checked={value.bold} onChange={b=>onChange({ ...value, bold: b })} />
-        <LabeledColor  label="Color" value={value.color} onChange={c=>onChange({ ...value, color: c })} />
-        <LabeledColor  label="BG"    value={value.bg}    onChange={c=>onChange({ ...value, bg: c })} />
-        <LabeledNumber label="BWidth" value={value.borderWidth} onChange={n=>onChange({ ...value, borderWidth: n })} />
-        <LabeledColor  label="BColor" value={value.borderColor} onChange={c=>onChange({ ...value, borderColor: c })} />
-        <LabeledColor  label="HoverBG" value={value.hoverBg} onChange={c=>onChange({ ...value, hoverBg: c })} />
+        <LabeledNumber label="Size" value={value.size ?? 12} onChange={n=>onChange({ ...value, size: n })} />
+        <LabeledCheckbox label="Bold" checked={value.bold ?? false} onChange={b=>onChange({ ...value, bold: b })} />
+        <LabeledColor  label="Color" value={value.color ?? '#111111'} onChange={c=>onChange({ ...value, color: c })} />
+        <LabeledColor  label="BG"    value={value.bg ?? '#FFFFFF'}    onChange={c=>onChange({ ...value, bg: c })} />
+        <LabeledNumber label="BWidth" value={value.borderWidth ?? 1} onChange={n=>onChange({ ...value, borderWidth: n })} />
+        <LabeledColor  label="BColor" value={value.borderColor ?? 'rgba(0,0,0,0.12)'} onChange={c=>onChange({ ...value, borderColor: c })} />
+        <LabeledColor  label="HoverBG" value={value.hoverBg ?? '#F5F5F5'} onChange={c=>onChange({ ...value, hoverBg: c })} />
       </div>
     </div>
   );
@@ -413,14 +451,3 @@ function LabeledColor(props: { label: string; value: string; onChange: (c: strin
     </label>
   );
 }
-
-// --- ADD: helper to normalize font-like cfg used by UI dialog (minimal safe default) ---
-const asFont = (v: any): FontCfg => {
-  if (!v) return { size: 12, bold: false, color: '#000000' };
-  return {
-    size: typeof v.size === 'number' ? v.size : 12,
-    bold: !!v.bold,
-    color: typeof v.color === 'string' ? v.color : '#000000',
-  };
-};
-// --- end add ---
