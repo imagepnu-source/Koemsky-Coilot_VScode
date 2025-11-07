@@ -1,0 +1,48 @@
+:root{
+  --ui-title:#0f172a; --ui-app-bg:#f8fafc; --ui-content-bg:#ffffff; --ui-border:#e5e7eb;
+  --ui-radius:12px; --ui-shadow-level:1;
+  --ui-list-card-bg:#ffffff; --ui-list-card-fg:#0f172a; --ui-list-card-border:#e5e7eb;
+  --ui-content-card-bg:#ffffff; --ui-content-text:#0f172a; --ui-content-card-border:#e5e7eb;
+  --ui-age-badge-bg:#eef2ff; --ui-age-badge-fg:#3730a3;
+  --ui-button-fg:#0f172a; --ui-button-bg:#ffffff; --ui-accent:#1d4ed8;
+  --ui-graph-card-bg:#ffffff;
+}
+
+/* 리스트/디테일 카드 */
+.play-card,.content-card{
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-list-card-border);
+  background: var(--ui-list-card-bg);
+  color: var(--ui-list-card-fg);
+  box-shadow:
+    0 1px 2px rgba(0,0,0, calc(var(--ui-shadow-level)*0.06)),
+    0 2px 8px rgba(0,0,0, calc(var(--ui-shadow-level)*0.04));
+}
+.content-card{
+  border-color: var(--ui-content-card-border);
+  background: var(--ui-content-card-bg);
+  color: var(--ui-content-text);
+}
+
+/* 배지(적정연령) */
+.age-badge{
+  background: var(--ui-age-badge-bg) !important;
+  color: var(--ui-age-badge-fg) !important;
+  border: 1px solid var(--ui-border) !important;
+}
+
+/* 커스텀 버튼 기본 */
+.button-designed{
+  background: var(--ui-button-bg);
+  color: var(--ui-button-fg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.button-designed:hover{
+  background: color-mix(in oklab, var(--ui-button-bg), var(--ui-accent) 10%);
+}
+
+/* 페이지/메인 배경 */
+body{ background: var(--ui-app-bg); }
+.main-content{ background: var(--ui-content-bg) !important; }

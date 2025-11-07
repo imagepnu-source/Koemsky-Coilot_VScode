@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Komensky Play V0.05</title>
+  <link rel="stylesheet" href="index.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+  <script>
+    window.addEventListener('error', function (event) {
+      const appElement = document.getElementById('app');
+      // Only show the failsafe if the app itself hasn't loaded.
+      if (appElement && appElement.classList.contains('hidden')) {
+        console.error("Failsafe captured a critical startup error:", event.error || event);
+        const errorMessage = event.message || 'Unknown error';
+        const errorStack = event.error ? event.error.stack : 'No stack trace available.';
+        document.body.innerHTML =
+          `<div style="color: #333; background-color: #fffde7; padding: 20px; margin: 20px; border: 1px solid #ffc107; border-radius: 8px; font-family: sans-serif;">
+            <h1 style="color: #c53030;">Application Failed to Start</h1>
+            <p>A critical error occurred that prevented the application from initializing. This is a failsafe message. Please check the developer console for technical details.</p>
+            <h3 style="margin-top: 20px; border-bottom: 1px solid #ccc; padding-bottom: 5px;">Error Details:</h3>
+            <pre style="background: #f1f1f1; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; color: #c53030; font-family: monospace;">${errorMessage}\n\n${errorStack}</pre>
+          </div>`;
+      }
+    });
+  </script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div id="welcome-screen" class="welcome-container">
+    <div class="welcome-content">
+      <div id="new-user-view">
+        <h2>Welcome!</h2>
+        <p>Please enter your child's information to start.</p>
+        <form id="registration-form">
+          <div class="form-group">
+            <label for="childName">Child's Name</label>
+            <input type="text" id="childName" required>
+          </div>
+          <div class="form-group">
+            <label for="childDob">Date of Birth</label>
+            <input type="date" id="childDob" required>
+          </div>
+          <div class="form-actions">
+            <button type="submit" id="submit-btn" class="btn-primary">Save and Start</button>
+          </div>
+        </form>
+      </div>
+      <div id="returning-user-view" class="hidden">
+        <h2>Welcome Back, <span id="returning-child-name"></span>!</h2>
+        <p>What would you like to do?</p>
+        <div class="form-actions" style="flex-direction: column;">
+            <button id="continue-btn" class="btn-primary">Continue Session</button>
+            <button id="reset-btn" class="secondary-btn danger">Start New Profile</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <header>
+      <div id="header-bar">
+        <span id="save-status-indicator"></span>
+        <div id="header-info">
+          <div class="header-line">
+            <span id="child-bio-info"></span>
+            <span id="child-dev-age"></span>
+          </div>
+          <p id="category-dev-age"></p>
+        </div>
+        <button id="settings-btn" aria-label="Settings">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.22,5.25C8.63,5.49,8.1,5.81,7.6,6.19L5.21,5.23C4.99,5.16,4.74,5.22,4.62,5.44L2.7,8.76 C2.59,8.96,2.64,9.23,2.82,9.37l2.03,1.58C4.8,11.36,4.78,11.68,4.78,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.38,2.44 c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17-0.48,0.41l0.38-2.44c0.59-0.24,1.12-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0.02,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"></path></svg>
+        </button>
+      </div>
+      <nav id="category-tabs-container">
+          <div id="category-tabs"></div>
+      </nav>
+    </header>
+
+    <main id="app-content-container">
+        <div id="activity-view">
+            <div id="activity-list-panel">
+                <div id="content"></div>
+            </div>
+            <div id="activity-detail-panel">
+                <div class="detail-placeholder">
+                    <p>Select an activity to see the details.</p>
+                </div>
+            </div>
+        </div>
+        <div id="graph-view" class="hidden">
+            <div id="graph-panel">
+                <div class="graph-panel-content">
+                    <div class="graph-controls">
+                        <div class="graph-tabs">
+                            <button class="graph-tab-button active" data-graph="radar">Radar Chart</button>
+                            <button class="graph-tab-button" data-graph="time">Time Axis Graph</button>
+                        </div>
+                        <div id="time-scale-controls" class="hidden">
+                            <button class="time-scale-button" data-scale="1w">1주</button>
+                            <button class="time-scale-button" data-scale="1m">1개월</button>
+                            <button class="time-scale-button" data-scale="6m">6개월</button>
+                            <button class="time-scale-button" data-scale="1y">1년</button>
+                            <button class="time-scale-button" data-scale="3y">3년</button>
+                            <button class="time-scale-button active" data-scale="6y">6년</button>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <div id="radar-chart-container">
+                            <canvas id="radar-chart"></canvas>
+                        </div>
+                        <div id="time-axis-chart-container" class="hidden">
+                            <canvas id="time-axis-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+  </div>
+  
+  <div id="settings-modal" class="settings-container hidden">
+      <div class="settings-content">
+          <div class="settings-header">
+              <h2>Settings</h2>
+              <button id="close-settings-btn" aria-label="Close settings">&times;</button>
+          </div>
+          <div class="form-group">
+            <label for="settings-childName">Child's Name</label>
+            <input type="text" id="settings-childName">
+          </div>
+          <div class="form-group">
+            <label for="settings-childDob">Date of Birth</label>
+            <input type="date" id="settings-childDob">
+          </div>
+          <div class="form-actions">
+            <button id="save-settings-btn" class="btn-primary">Save Changes</button>
+          </div>
+          <hr>
+          <div class="snapshot-management">
+              <h3>Data Snapshots</h3>
+              <div class="snapshot-save-area">
+                  <input type="text" id="snapshot-name-input" class="form-group input" placeholder="Enter snapshot name">
+                  <button id="save-snapshot-btn" class="secondary-btn">Save Current</button>
+              </div>
+              <div id="snapshot-list-container">
+                  <p>No snapshots saved yet.</p>
+                  <ul id="snapshot-list" class="snapshot-list hidden"></ul>
+              </div>
+          </div>
+          <hr>
+          <div class="form-actions">
+            <button id="generate-test-data" class="secondary-btn">Generate & Load Test Data</button>
+          </div>
+          <div id="settings-feedback"></div>
+          <div class="form-actions">
+            <button id="reset-app-data" class="secondary-btn danger">Reset All App Data</button>
+          </div>
+      </div>
+  </div>
+
+  <div id="confirm-modal" class="settings-container hidden">
+      <div class="settings-content" style="max-width: 400px;">
+          <div class="settings-header">
+              <h2 id="confirm-title">Confirm Action</h2>
+          </div>
+          <p id="confirm-message" style="margin: 20px 0;"></p>
+          <div class="form-actions">
+              <button id="confirm-cancel-btn" class="secondary-btn">Cancel</button>
+              <button id="confirm-ok-btn" class="btn-primary">Confirm</button>
+          </div>
+      </div>
+  </div>
+
+<script type="module" src="index.tsx"></script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+:root{
+  --ui-radius: 12px;
+  --ui-spacing: 8px;
+  --ui-font-scale: 1;
+  --ui-primary: #4f46e5;
+  --ui-name-age-weight: 400;
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ui-surface: #0b0b0f;
+  --ui-elev: #14141a;
+  --ui-text: #e6e6ef;
+  --ui-border: #2a2a31;
+  --ui-muted: #9aa0aa;
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --ui-surface: #ffffff;
+  --ui-elev: #f6f7fb;
+  --ui-text: #0e1016;
+  --ui-border: #e5e7eb;
+  --ui-muted: #6b7280;
+}
+
+html{ font-size: calc(16px * var(--ui-font-scale)); }
+*{ border-radius: var(--ui-radius); }
+
+/* Utilities */
+.ui-primary-bg{ background: var(--ui-primary) !important; color: white !important; }
+.ui-primary-text{ color: var(--ui-primary) !important; }
+.ui-border{ border: 1px solid var(--ui-border) !important; }
+.ui-card{ background: var(--ui-elev) !important; border: 1px solid var(--ui-border) !important; }
+.ui-muted{ color: var(--ui-muted) !important; }
+.ui-gap{ gap: var(--ui-spacing) !important; }
+
+/* Floating toggle */
+.ui-floating-toggle{
+  position: fixed; top: 12px; right: 12px;
+  padding: 8px 10px;
+  background: var(--ui-elev); border: 1px solid var(--ui-border);
+  cursor: pointer; z-index: 9999;
+}
+.ui-floating-toggle:hover{ filter: brightness(1.05); }
+
+/* Panel */
+.ui-design-panel{
+  position: fixed; top: 56px; right: 12px; width: 320px;
+  background: var(--ui-surface); border: 1px solid var(--ui-border);
+  padding: 12px; z-index: 9999; box-shadow: 0 8px 20px rgba(0,0,0,.2);
+}
+.ui-design-header{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ui-close{ background: transparent; border: 1px solid var(--ui-border); padding: 2px 6px; cursor: pointer; }
+
+.ui-row{ display: grid; grid-template-columns: 1fr; gap: 6px; margin: 10px 0; }
+.ui-inline{ display: flex; gap: 6px; flex-wrap: wrap; }
+.ui-chip{ border: 1px solid var(--ui-border); background: var(--ui-elev); padding: 6px 10px; cursor: pointer; user-select: none; }
+.ui-chip.active{ outline: 2px solid var(--ui-primary); }
+.ui-hint{ font-size: .9rem; color: var(--ui-muted); margin-top: 6px; }
+
+/* ===== Name/Age Bold: enforce visibility ===== */
+[data-ui="name-age"], #name-age, .name-age{
+  font-weight: var(--ui-name-age-weight) !important;
+}
+
+/* 추정 셀렉터 — 실제 마크업과 다르면 무시됨 */
+.row-2 .center,
+.r2 .c-mid,
+.row:nth-child(2) .center,
+.grid-row-2 .col-center{
+  font-weight: var(--ui-name-age-weight) !important;
+}
