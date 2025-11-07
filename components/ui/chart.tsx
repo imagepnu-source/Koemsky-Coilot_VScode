@@ -112,30 +112,29 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip
 
-function ChartTooltipContent({
-  active,
-  payload,
-  className,
-  indicator = 'dot',
-  hideLabel = false,
-  hideIndicator = false,
-  label,
-  labelFormatter,
-  labelClassName,
-  formatter,
-  color,
-  nameKey,
-  labelKey,
-  ...divProps
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-  React.ComponentProps<'div'> & {
-    hideLabel?: boolean
-    hideIndicator?: boolean
-    indicator?: 'line' | 'dot' | 'dashed'
-    nameKey?: string
-    labelKey?: string
-  }) {
+function ChartTooltipContent(props: any) {
+  const {
+    active,
+    payload,
+    className,
+    indicator = 'dot',
+    hideLabel = false,
+    hideIndicator = false,
+    label,
+    labelFormatter,
+    labelClassName,
+    formatter,
+    color,
+    nameKey,
+    labelKey,
+    ...divProps
+  } = props as any
+
   const { config } = useChart()
+
+  // Recharts typings don't expose payload/label on this element type here.
+  // We already read payload and label from props via destructuring above,
+  // so remove duplicate redeclarations.
 
   const tooltipLabel = React.useMemo(() => {
     if (hideLabel || !payload || !(payload as TooltipItem[]).length) return null
@@ -261,7 +260,8 @@ function ChartLegendContent({
   nameKey,
   ...divProps
 }: React.ComponentProps<'div'> &
-  Pick<RechartsPrimitive.LegendProps, 'payload' | 'verticalAlign'> & {
+  // relax Legend props typing to avoid TS2344 (tight Recharts types mismatch)
+  Record<string, any> & {
     hideIcon?: boolean
     nameKey?: string
   }) {
