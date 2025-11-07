@@ -3,18 +3,50 @@ import React from 'react';
 import type {
   AllCfg, BoxCfg, SmallBoxCfg, FontCfg, LevelBadgeCfg, AgeBadgeCfg, DropdownCfg
 } from '@/lib/ui-design';
-import { loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS, asFont } from '@/lib/ui-design';
+import { loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS as applyUIDesignGlobal, asFont } from '@/lib/ui-design';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import type { BoxStyle, TextStyle } from "@/lib/ui-types";
 
 export default function UIDesignDialog() {
   const [open, setOpen] = React.useState(false);
+
+  // 위치/크기 상태 복원 (팝업 동작에 필요)
+  const [pos, setPos] = React.useState<{ x: number; y: number }>({ x: 100, y: 100 });
+  const [modalSize, setModalSize] = React.useState<{ width?: string | number; height?: string | number }>( {
+    width: '70vw',
+    height: 'calc(70vh + 50px)',
+  });
+
+  // 드래그 시작 핸들러 (팝업 헤더에서 사용)
+  function startDrag(e: React.MouseEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const orig = { x: pos.x, y: pos.y };
+
+    function onMove(ev: MouseEvent) {
+      setPos({ x: orig.x + (ev.clientX - startX), y: orig.y + (ev.clientY - startY) });
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  React.useEffect(()=>{
+    if (open) document.documentElement.classList.add('ui-design-active');
+    else document.documentElement.classList.remove('ui-design-active');
+  }, [open]);
+
   // cfg is managed by reducer below (loadUIDesignCfg used in initializer)
   type Action =
     | { type: 'SET'; key: keyof AllCfg; value: any }
     | { type: 'RESET'; value: AllCfg }
 
   function cfgReducer(state: AllCfg, action: Action): AllCfg {
+    console.log('[cfgReducer] action:', action); // <-- 추가: 액션 로깅
     switch (action.type) {
       case 'SET':
         return { ...state, [action.key]: action.value } as AllCfg
@@ -24,77 +56,35 @@ export default function UIDesignDialog() {
         return state
     }
   }
-
-  const [cfg, dispatch] = React.useReducer(
+  
+  const [cfgState, dispatch] = React.useReducer(
     cfgReducer,
     undefined as unknown as AllCfg,
     () => {
       try {
-        return loadUIDesignCfg()
+        const loaded = loadUIDesignCfg()
+        console.log('[init] loaded cfg:', loaded) // <-- 추가: 초기값 로그
+        return loaded
       } catch {
         return {} as AllCfg
       }
     },
   )
-
-  const update = <K extends keyof AllCfg>(k: K, v: AllCfg[K]) =>
-    dispatch({ type: 'SET', key: k, value: v })
-
-  // --- ADD: modal position/size + drag state/handlers (insert if missing) ---
-  const [modalSize, setModalSize] = React.useState({ width: 0, height: 0 });
-  const [pos, setPos] = React.useState({ x: 0, y: 0 });
-  const dragRef = React.useRef({
-    dragging: false,
-    startX: 0,
-    startY: 0,
-    startLeft: 0,
-    startTop: 0,
-  });
-
+  // Use the reducer state as the single source of truth for rendering
+  const cfg = cfgState;
+  
+   const update = <K extends keyof AllCfg>(k: K, v: AllCfg[K]) => {
+     console.log('[update] key=', k, 'value=', v) // <-- 추가: update 호출 로그
+     dispatch({ type: 'SET', key: k, value: v })
+   }
+   
   React.useEffect(() => {
-    const compute = () => {
-      const w = Math.round(window.innerWidth * 0.7);
-      const h = Math.round(window.innerHeight * 0.7) + 50;
-      setModalSize({ width: w, height: h });
-      setPos(p => (p.x === 0 && p.y === 0)
-        ? { x: Math.max(8, Math.round((window.innerWidth - w) / 2)), y: Math.max(8, Math.round((window.innerHeight - h) / 2)) }
-        : p);
-    };
-    compute();
-    window.addEventListener('resize', compute);
-    return () => window.removeEventListener('resize', compute);
-  }, [open]);
+    console.log('[useEffect applyUIDesignCSS] cfgState:', cfg)
+    applyUIDesignGlobal(cfg);
 
-  React.useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragRef.current.dragging) return;
-      const dx = e.clientX - dragRef.current.startX;
-      const dy = e.clientY - dragRef.current.startY;
-      setPos({
-        x: Math.max(8, Math.min(window.innerWidth - modalSize.width - 8, dragRef.current.startLeft + dx)),
-        y: Math.max(8, Math.min(window.innerHeight - modalSize.height - 8, dragRef.current.startTop + dy)),
-      });
-    };
-    const onUp = () => { dragRef.current.dragging = false; document.body.style.userSelect = ''; };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [modalSize]);
-
-  const startDrag = (e: React.MouseEvent) => {
-    e.preventDefault();
-    dragRef.current.dragging = true;
-    dragRef.current.startX = e.clientX;
-    dragRef.current.startY = e.clientY;
-    dragRef.current.startLeft = pos.x;
-    dragRef.current.startTop = pos.y;
-    document.body.style.userSelect = 'none';
-  };
-  // --- END ADD ---
-  React.useEffect(() => { applyUIDesignCSS(cfg); }, [cfg]);
+    // expose for manual testing in DevTools console:
+    (window as any).__debug_applyUIDesignCSS = () => applyUIDesignGlobal(cfg);
+  }, [cfg]);
   const persist = () => saveUIDesignCfg(cfg);
 
   return (
@@ -266,8 +256,9 @@ export default function UIDesignDialog() {
 }
 
 /** ---------- Sections ---------- */
-function FontSection(props: { title: string; value: FontCfg; onChange: (v: FontCfg)=>void }) {
-  const { title, value, onChange } = props;
+function FontSection(props: { title: string; value?: FontCfg; onChange: (v: FontCfg)=>void }) {
+  const { title, value: raw, onChange } = props;
+  const value = raw ?? ({} as FontCfg); // safe fallback
   return (
     <div className="p-3 rounded-lg border bg-white">
       <div className="font-semibold mb-2">{title}</div>
@@ -373,16 +364,17 @@ function DropdownSection(props: { value: DropdownCfg; onChange: (v: DropdownCfg)
   );
 }
 
-function BoxSection(props: { title?: string; value: BoxCfg; onChange: (v: BoxCfg)=>void }) {
-  const { title = 'Box', value, onChange } = props;
+function BoxSection(props: { title?: string; value?: BoxCfg; onChange: (v: BoxCfg)=>void }) {
+  const { title = 'Box', value: raw, onChange } = props;
+  const value = raw ?? ({} as BoxCfg);
   return (
     <div className="p-3 rounded-lg border bg-white">
       <div className="font-semibold mb-2">{title}</div>
       <div className="grid grid-cols-4 gap-3">
         <LabeledColor  label="BG" value={value.bg} onChange={c=>onChange({ ...value, bg: c })} />
-        <LabeledNumber label="Padding" value={value.padding} onChange={n=>onChange({ ...value, padding: n })} />
-        <LabeledNumber label="BWidth" value={value.border.width} onChange={n=>onChange({ ...value, border: { ...value.border, width: n } })} />
-        <LabeledColor  label="BColor" value={value.border.color} onChange={c=>onChange({ ...value, border: { ...value.border, color: c } })} />
+        <LabeledNumber label="Padding" value={value.padding ?? 0} onChange={n=>onChange({ ...value, padding: n })} />
+        <LabeledNumber label="BWidth" value={(value.border && value.border.width) ?? 0} onChange={n=>onChange({ ...value, border: { ...(value.border ?? {}), width: n } })} />
+        <LabeledColor  label="BColor" value={value.border?.color} onChange={c=>onChange({ ...value, border: { ...(value.border ?? {}), color: c } })} />
       </div>
     </div>
   );
@@ -404,50 +396,58 @@ function SmallBoxSection(props: { title: string; value: SmallBoxCfg; onChange: (
 }
 
 /** ---------- Tiny Inputs ---------- */
-function LabeledNumber(props: { label: string; value: number; onChange: (n: number)=>void }) {
+function LabeledNumber(props: { label: string; value?: number; onChange: (n: number)=>void }) {
+  const valStr = typeof props.value === 'number' ? String(props.value) : ''
   return (
     <label className="ui-item col-span-1 min-w-0 flex items-center gap-2">
       <span className="w-20 text-sm">{props.label}</span>
       <input
         type="number"
         className="border px-2 py-1 w-24"
-        value={props.value}
-        onChange={e=>props.onChange(Number(e.target.value))}
+        value={valStr}
+        onChange={e=>{
+          const v = e.target.value
+          const n = v === '' ? 0 : Number(v)
+          props.onChange(Number.isNaN(n) ? 0 : n)
+        }}
       />
     </label>
   );
 }
-function LabeledCheckbox(props: { label: string; checked: boolean; onChange: (b: boolean)=>void }) {
+function LabeledCheckbox(props: { label: string; checked?: boolean; onChange: (b: boolean)=>void }) {
   return (
     <label className="ui-item col-span-1 min-w-0 flex items-center gap-2">
       <span className="w-20 text-sm">{props.label}</span>
-      <input type="checkbox" checked={props.checked} onChange={e=>props.onChange(e.target.checked)} />
+      <input type="checkbox" checked={!!props.checked} onChange={e=>props.onChange(e.target.checked)} />
     </label>
   );
 }
-function LabeledColor(props: { label: string; value: string; onChange: (c: string)=>void }) {
-  const normalize = (val: string) => {
-    if (!val) return '#000000';
-    const v = val.trim();
-    if (/^(oklch|rgb|rgba|hsl|hsla)\(/i.test(v)) return v;
-    const m = v.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
-    if (m) {
-      const hex = m[1].length===3 ? '#' + m[1].split('').map(ch=>ch+ch).join('') : '#' + m[1];
-      return hex.toUpperCase();
-    }
-    return v;
-  };
-  const onText = (e: any) => props.onChange(normalize(e.target.value));
-  const onPick = (e: any) => props.onChange(normalize(e.target.value));
-  const val = props.value || '';
-  const norm = normalize(val);
-  const hexForPicker = /^#([0-9A-F]{6}|[0-9A-F]{8})$/i.test(norm) ? (norm.length===9 ? norm.slice(0,7) : norm) : '#000000';
+function LabeledColor(props: { label: string; value?: string; onChange: (c: string)=>void }) {
+   const normalize = (val: string) => {
+     if (!val) return '#000000';
+     const v = val.trim();
+     if (/^(oklch|rgb|rgba|hsl|hsla)\(/i.test(v)) return v;
+     const m = v.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
+     if (m) {
+       const hex = m[1].length===3 ? '#' + m[1].split('').map(ch=>ch+ch).join('') : '#' + m[1];
+       return hex.toUpperCase();
+     }
+     return v;
+   };
+   const onText = (e: any) => props.onChange(normalize(e.target.value));
+   const onPick = (e: any) => props.onChange(normalize(e.target.value));
+   const val = props.value || '';
+   const norm = normalize(val);
+   const hexForPicker = /^#([0-9A-F]{6}|[0-9A-F]{8})$/i.test(norm) ? (norm.length===9 ? norm.slice(0,7) : norm) : '#000000';
+ 
+   return (
+     <label className="ui-item col-span-1 min-w-0 flex items-center gap-2">
+       <span className="w-20 text-sm">{props.label}</span>
+       <input type="color" className="h-8 w-[30px] border rounded shrink-0" value={hexForPicker} onChange={onPick} title="Color picker" />
+       <input type="text" className="border px-2 py-1 w-1/2 font-mono text-sm" placeholder="#RRGGBB / #RRGGBBAA / oklch() / rgb()" value={val} onChange={onText} />
+     </label>
+   );
+}
 
-  return (
-    <label className="ui-item col-span-1 min-w-0 flex items-center gap-2">
-      <span className="w-20 text-sm">{props.label}</span>
-      <input type="color" className="h-8 w-[30px] border rounded shrink-0" value={hexForPicker} onChange={onPick} title="Color picker" />
-      <input type="text" className="border px-2 py-1 w-1/2 font-mono text-sm" placeholder="#RRGGBB / #RRGGBBAA / oklch() / rgb()" value={val} onChange={onText} />
-    </label>
-  );
-}
+/** ---------- UIDesign CSS ---------- */
+// (로컬 applyUIDesignCSS 구현 제거 — lib에서 제공하는 applyUIDesignCSS를 사용합니다)

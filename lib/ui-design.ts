@@ -183,30 +183,70 @@ export function saveUIDesignCfg(cfg: AllCfg) {
   }
 }
 
+export function buildVarsFromCfg(cfg: AllCfg): Record<string,string> {
+  // 기존 vars 계산 로직을 이 함수로 이동
+  const vars: Record<string,string> = {
+    '--ui-title-size': cfg.title?.size ? String(cfg.title.size) : '',
+    '--ui-title-color': cfg.title?.color ?? '',
+    '--ui-top-header-bg': cfg.topHeaderBox?.bg ?? '',
+    '--ui-top-header-padding': cfg.topHeaderBox?.padding != null ? String(cfg.topHeaderBox.padding) + 'px' : '',
+    '--ui-top-header-border-width': cfg.topHeaderBox?.border?.width != null ? String(cfg.topHeaderBox.border.width) + 'px' : '',
+    '--ui-top-header-border-color': cfg.topHeaderBox?.border?.color ?? '',
+    '--ui-playlist-bg': cfg.playListBox?.bg ?? '',
+    '--ui-playlist-padding': cfg.playListBox?.padding != null ? String(cfg.playListBox.padding) + 'px' : '',
+    '--ui-playlist-border-width': cfg.playListBox?.border?.width != null ? String(cfg.playListBox.border.width) + 'px' : '',
+    '--ui-playlist-border-color': cfg.playListBox?.border?.color ?? '',
+    '--ui-name-age-weight': cfg.namebio?.bold ? '700' : '400',
+    '--ui-name-age-color': cfg.namebio?.color ?? '',
+    '--ui-list-bg': cfg.playListBox?.bg ?? '',
+    '--ui-radius': cfg.detailSmallBox?.radius != null ? String(cfg.detailSmallBox.radius) + 'px' : '',
+  }
+  return vars
+}
+
+function injectVarsStyle(vars: Record<string,string>) {
+  if (typeof document === 'undefined') return;
+  const id = 'ui-design-vars';
+  const rootCss = `:root{${Object.entries(vars).filter(([,v])=>v!=='').map(([k,v])=>`${k}:${v};`).join('')}}`;
+  // 추가: 디자인 모드 스코프 규칙(우선순위 확보) - 최소화된 강제 규칙
+  const forced = `
+.ui-design-active [data-ui="play-list"], .ui-design-active .play-list-panel, .ui-design-active .play-list {
+  box-sizing: border-box;
+  background: var(--ui-playlist-bg) ;
+  padding: var(--ui-playlist-padding) ;
+  border: var(--ui-playlist-border-width) solid var(--ui-playlist-border-color) ;
+}
+`;
+  const css = rootCss + '\n' + forced;
+  let tag = document.getElementById(id) as HTMLStyleElement | null;
+  if (!tag) {
+    tag = document.createElement('style');
+    tag.id = id;
+    tag.appendChild(document.createTextNode(css));
+    document.head && document.head.appendChild(tag);
+  } else {
+    if (tag.textContent !== css) tag.textContent = css;
+  }
+}
+
 export function applyUIDesignCSS(cfg: AllCfg) {
-  const r = document.documentElement
-  const set = (k: string, v: string | number) => r.style.setProperty(k, String(v))
-
-  // Header
-  set('--kp-title-size', (cfg.title?.size ?? defaults.title.size) + 'px')
-  set('--kp-title-weight', (cfg.title?.bold ? '700' : '400'))
-  set('--kp-title-color', String(cfg.title?.color ?? defaults.title.color))
-
-  set('--kp-namebio-size', (cfg.namebio?.size ?? defaults.namebio.size) + 'px')
-  set('--kp-namebio-weight', (cfg.namebio?.bold ? '700' : '400'))
-  set('--kp-namebio-color', String(cfg.namebio?.color ?? defaults.namebio.color))
-
-  // List row text
-  set('--kp-activity-size', (cfg.activity?.size ?? defaults.activity.size) + 'px')
-  set('--kp-activity-weight', (cfg.activity?.bold ? '700' : '400'))
-  set('--kp-activity-color', String(cfg.activity?.color ?? defaults.activity.color))
-
-  // Detail/title/body
-  set('--kp-detail-title-size', (cfg.detailTitle?.size ?? defaults.detailTitle.size) + 'px')
-  set('--kp-detail-title-weight', (cfg.detailTitle?.bold ? '700' : '400'))
-  set('--kp-detail-title-color', String(cfg.detailTitle?.color ?? defaults.detailTitle.color))
-
-  set('--kp-detail-body-size', (cfg.detailBody?.size ?? defaults.detailBody.size) + 'px')
-  set('--kp-detail-body-weight', (cfg.detailBody?.bold ? '700' : '400'))
-  set('--kp-detail-body-color', String(cfg.detailBody?.color ?? defaults.detailBody.color))
+  const vars = buildVarsFromCfg(cfg);
+  // inject style tag (guarantees CSS sees vars)
+  try { injectVarsStyle(vars); } catch {}
+  // inline fallback for a small set of known candidates
+  try {
+    const playlistSel = ['[data-ui="play-list"]', '.play-list-panel', '.play-list', '.play-list-wrap'];
+    for (const sel of playlistSel) {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) continue;
+      if (vars['--ui-playlist-bg']) el.style.background = vars['--ui-playlist-bg'];
+      if (vars['--ui-playlist-padding']) el.style.padding = vars['--ui-playlist-padding'];
+      if (vars['--ui-playlist-border-width'] || vars['--ui-playlist-border-color']) {
+        const bw = vars['--ui-playlist-border-width'] || '0px';
+        const bc = vars['--ui-playlist-border-color'] || 'transparent';
+        el.style.border = `${bw} solid ${bc}`;
+        el.style.boxSizing = 'border-box';
+      }
+    }
+  } catch {}
 }
