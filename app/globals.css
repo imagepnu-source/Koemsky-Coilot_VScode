@@ -222,51 +222,26 @@ body * {
 
 
 /* === UI Design variable mappings === */
+/* 상단 헤더(Top header) : UIDesignDialog의 topHeaderBox에서 공급되는 변수 사용 */
 [data-ui="top-header"] {
-  background: var(--ui-top-header-bg, white);
-  border-width: var(--ui-top-header-border-width, 1px);
-  border-style: solid;
-  border-color: var(--ui-top-header-border-color, #E5E7EB);
+  background: var(--ui-top-header-bg, var(--ui-card-bg, transparent));
   padding: var(--ui-top-header-padding, 12px);
-}
 
-[data-ui="title"], [data-ui="Title"] {
-
-  font-size: var(--ui-title-size, 18px);
-  font-weight: var(--ui-title-weight, 700);
-  color: var(--ui-title-color, #111);
-
-}
-[data-ui="name-bio"], [data-ui="namebio"], [data-ui="NameBio"], [data-ui="name_bio"] {
-
-  font-size: var(--ui-namebio-size, 16px);
-  font-weight: var(--ui-namebio-weight, 400);
-  color: var(--ui-namebio-color, #111);
-
-}
-[data-ui="devage"], [data-ui="dev-age"], [data-ui="DevAge"], [data-ui="dev_age"] {
-
-  font-size: var(--ui-devage-size, 16px);
-  font-weight: var(--ui-devage-weight, 400);
-  color: var(--ui-devage-color, #111);
-
-}
-[data-ui="catag"] {
-  font-size: var(--ui-catag-size, 14px);
-  font-weight: var(--ui-catag-weight, 400);
-  color: var(--ui-catag-color, #111);
-}
-
-/* === Inlined from globals.ui-vars.css (R6 safe preserve) === */
-/* === UI variable mappings for new controls === */
-
-/* Play List container */
-[data-ui="play-list"] {
-  background: var(--ui-list-bg, white);
-  border-width: var(--ui-list-border-width, 1px);
+  /* 전체 테두리로 변경: 상하좌우 모두 제어 가능 */
   border-style: solid;
-  border-color: var(--ui-list-border-color, #E5E7EB);
-  padding: var(--ui-list-padding, 12px);
+  border-width: var(--ui-top-header-border-width, 0px);
+  border-color: var(--ui-top-header-border-color, rgba(0,0,0,0.12));
+}
+
+/* 플레이 리스트 컨테이너: 플레이리스트 변수(폴백으로 기존 --ui-list-bg도 사용) */
+.ui-design-active [data-ui="play-list"],
+.ui-design-active .play-list-panel,
+.ui-design-active .play-list {
+  box-sizing: border-box;
+  background: var(--ui-playlist-bg, var(--ui-list-bg, transparent));
+  padding: var(--ui-playlist-padding, 12px);
+  border: var(--ui-playlist-border-width, 0px) solid var(--ui-playlist-border-color, rgba(0,0,0,0.12));
+  border-radius: var(--ui-radius, 0px);
 }
 
 /* Activity number & title */
