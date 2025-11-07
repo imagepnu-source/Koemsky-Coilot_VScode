@@ -28,3 +28,14 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+# UI Design Editor — local repo
+
+Repository for iterative refactor of UIDesignDialog / ui-design helpers.
+
+Workflow:
+- Work on branch `ui-design-refactor`.
+- Run typecheck frequently: `npx tsc --noEmit`.
+- Use `document.getElementById('ui-design-vars')` and console logs for runtime verification.
+
+Commit often and keep popup behavior intact; avoid changing popup markup in big sweeps.
