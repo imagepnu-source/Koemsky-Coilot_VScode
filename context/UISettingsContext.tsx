@@ -17,6 +17,12 @@ type UISettings = {
 
   /** Activity 번호 & 제목 통합 폰트 (정식 키) */
   activityFont: FontCfg;
+
+  /** CSS 변수 맵 */
+  cssVars?: Record<string, string | number>;
+
+  /** 스크롤바 숨김 여부 */
+  hideScrollbar?: boolean;
 };
 
 type UpdateableKeys = keyof UISettings;
@@ -38,6 +44,12 @@ const DEFAULTS: UISettings = {
 
   /** 기본값 */
   activityFont:  { size: 14, bold: false, color: '#333' },
+
+  /** CSS 변수 맵 기본값 */
+  cssVars: {},
+
+  /** 스크롤바 숨김 기본값 */
+  hideScrollbar: false,
 };
 
 const C = React.createContext<Ctx>({ settings: DEFAULTS, update: () => {} });
@@ -65,13 +77,25 @@ export function UISettingsProvider({ children }: { children: React.ReactNode }) 
     try { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); } catch {}
   }, [settings]);
 
-  // CSS 변수 동기화 + 별도 저장
+  // DOM 조작은 클라이언트 마운트 이후에만 실행하도록 이동
   React.useEffect(() => {
-    if (!isBrowser()) return;
-    document.documentElement.style.setProperty('--primary', settings.primary);
-    document.documentElement.style.setProperty('--ui-name-age-weight', settings.nameAgeBold ? '700' : '400');
-    try { localStorage.setItem(LS_BOLD, settings.nameAgeBold ? 'on' : 'off'); } catch {}
-  }, [settings.primary, settings.nameAgeBold]);
+    if (typeof window === "undefined") return;
+    const root = document.documentElement;
+    try {
+      const s = getComputedStyle(root);
+      // 예: CSS 변수 적용
+      if (settings?.cssVars) {
+        Object.entries(settings.cssVars).forEach(([k, v]) => {
+          root.style.setProperty(k, String(v));
+        });
+      }
+      // 예: 클래스 안전 적용
+      if (settings?.hideScrollbar) root.classList.add("hide-scrollbar");
+      else root.classList.remove("hide-scrollbar");
+    } catch (e) {
+      console.error("UISettingsContext DOM update failed:", e);
+    }
+  }, [settings]);
 
   // 동일값이면 setState 생략 → 렌더 루프 방지
   const update: Ctx['update'] = React.useCallback((k, v) => {

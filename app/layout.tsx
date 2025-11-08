@@ -1,4 +1,3 @@
-
 /* app/layout.tsx */
 import "./globals.css"
 import React from "react"
@@ -14,21 +13,9 @@ try {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const content = (
-    <html lang="ko">
+  return (
+    <html lang="ko" className="your-root-classes">
       <body>{children}</body>
     </html>
-  )
-
-  if (UIDesignProvider) {
-    const Provider = UIDesignProvider
-    return (
-      <html lang="ko">
-        <body>
-          <Provider>{children}</Provider>
-        </body>
-      </html>
-    )
-  }
-  return content
+  );
 }
