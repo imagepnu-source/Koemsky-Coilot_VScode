@@ -42,33 +42,36 @@ const handlePlaySelect = (category: string, num: number) => {
 };
 
 export default function KomenskyPlayApp() {
-// ===== [BRIDGE] BEGIN =====
-useEffect(() => {
-  const check = () => typeof (window as any).renderDetailPanel === 'function';
-  console.log('[BRIDGE] page mount: typeof renderDetailPanel =', typeof (window as any).renderDetailPanel);
+  // DEBUG: 강제 렌더 테스트 / selectedPlay 노출 (flag 선언만; effect는 아래로 이동)
+  const DEBUG_FORCE_DETAIL = true; // 나중에 false로 되돌릴 것
 
-  if (!check()) {
-    try {
-      if (location.hash !== '#probe-legacy') {
-        location.hash = '#probe-legacy';
-        window.dispatchEvent(new HashChangeEvent('hashchange'));
-        console.log('[BRIDGE] dispatched hashchange(#probe-legacy)');
+  // ===== [BRIDGE] BEGIN =====
+  useEffect(() => {
+    const check = () => typeof (window as any).renderDetailPanel === 'function';
+    console.log('[BRIDGE] page mount: typeof renderDetailPanel =', typeof (window as any).renderDetailPanel);
+
+    if (!check()) {
+      try {
+        if (location.hash !== '#probe-legacy') {
+          location.hash = '#probe-legacy';
+          window.dispatchEvent(new HashChangeEvent('hashchange'));
+          console.log('[BRIDGE] dispatched hashchange(#probe-legacy)');
+        }
+      } catch (e) {
+        console.warn('[BRIDGE] hash trigger failed', e);
       }
-    } catch (e) {
-      console.warn('[BRIDGE] hash trigger failed', e);
     }
-  }
 
-  let tries = 0;
-  const t = setInterval(() => {
-    const ok = check();
-    console.log('[BRIDGE] poll renderDetailPanel:', ok, `(try=${++tries})`);
-    if (ok || tries >= 8) clearInterval(t);
-  }, 300);
+    let tries = 0;
+    const t = setInterval(() => {
+      const ok = check();
+      console.log('[BRIDGE] poll renderDetailPanel:', ok, `(try=${++tries})`);
+      if (ok || tries >= 8) clearInterval(t);
+    }, 300);
 
-  return () => clearInterval(t);
-}, []);
-// ===== [BRIDGE] END =====
+    return () => clearInterval(t);
+  }, []);
+  // ===== [BRIDGE] END =====
 
 
   const [childProfile, setChildProfile] = useState<ChildProfile | null>(null)
@@ -79,6 +82,8 @@ useEffect(() => {
     return categories.length > 0 ? (categories[0] as PlayCategory) : "그래프"
   })
   const [selectedPlay, setSelectedPlay] = useState<{ category: PlayCategory; number: number } | null>(null)
+  // dev: expose selectedPlay for debug (must be after state declaration)
+  useEffect(()=>{ (window as any).__selectedPlay = selectedPlay; }, [selectedPlay]);
   const [playData, setPlayData] = useState<Record<PlayCategory, any[]>>({} as any)
   const [scrollPositions, setScrollPositions] = useState<Record<PlayCategory, number>>({} as any)
   const [categoryDevelopmentAges, setCategoryDevelopmentAges] = useState<Record<PlayCategory, number>>({} as any)
@@ -300,7 +305,7 @@ useEffect(() => {
 
       <div className="min-h-screen bg-background">
         {/* 헤더 */}
-        <div className="border-b border-border px-4 py-3 bg-card" data-ui="top-header">
+        <div className="border-b border-border px-4 py-3 bg-card sticky top-0 z-20" data-ui="top-header">
           <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
             <div className="justify-self-start" />
             <h2 data-ui="title" className="justify-self-center text-xl font-bold text-foreground"> 
@@ -350,106 +355,16 @@ useEffect(() => {
 
         {/* 본문 */}
         <div>
-          {getPlayCategories().map((category) => {
-            if (selectedTab !== category) return null
-            return (
-              <div key={category}>
-                {selectedPlay?.category === category ? ((() => { try { console.log("[DIAG C] render gate PASS", { category, selectedPlay }); } catch {} })(),
-                  <PlayDetailPanel
-                    category={category}
-                    playNumber={selectedPlay.number}
-                    onBack={handleBackToList}
-                    onNavigate={handlePlayNavigate}
-                    totalPlays={playData?.[category]?.length || 25}
-                  />
-                ) : (
-                  <div className="max-h-[calc(100vh-200px)] overflow-y-auto" data-category={category}>
-                    {/* ✅ PlayListPanel이 요구하는 items 형태로 변환해서 전달 */}
-                    <PlayListPanel
-                      items={(playData?.[category] || []).map((a: any) => {
-const num = a.playNumber ?? a.num ?? a.number;
-const minAge = (a.minAge ?? a.min ?? 0) as number;
-const maxAge = (a.maxAge ?? a.max ?? a.minAge ?? a.min ?? 0) as number;
-
-// 1) Consolidate achievement signals from arrays/fields/dates
-const flagsFromArray = Array.isArray(a.achievedLevelFlags)
-  ? a.achievedLevelFlags
-  : Array.isArray(a.achievedDates)
-    ? a.achievedDates.map((d: any) => !!d)
-    : Array.isArray(a.achievedDate)
-      ? a.achievedDate.map((d: any) => !!d)
-      : undefined;
-
-// Treat levelN true/1 OR dateN present as achieved
-const flagsFromFields = [
-  (a.level1 === 1 || a.level1 === true) || !!a.date1,
-  (a.level2 === 1 || a.level2 === true) || !!a.date2,
-  (a.level3 === 1 || a.level3 === true) || !!a.date3,
-  (a.level4 === 1 || a.level4 === true) || !!a.date4,
-  (a.level5 === 1 || a.level5 === true) || !!a.date5,
-];
-
-const rawFlags = flagsFromArray ?? flagsFromFields;
-const flags: boolean[] = Array.isArray(rawFlags)
-  ? rawFlags.slice(0, 5).map((v: any) => v === true || v === 1 || v === "1")
-  : [false, false, false, false, false];
-
-// 2) Highest: hint first, else 5->1 from flags
-let highestLevel = 0;
-const hinted =
-  (typeof a.achievedLevel_Highest === "number" && a.achievedLevel_Highest >= 0 && a.achievedLevel_Highest <= 5)
-    ? a.achievedLevel_Highest
-    : undefined;
-
-if (typeof hinted === "number") {
-  highestLevel = hinted;
-} else {
-  for (let i = flags.length; i >= 1; i--) {
-    if (flags[i - 1]) { highestLevel = i; break; }
-  }
-}
-
-// 3) If still 0, fallback to komensky_top_achievements (category+num match) — single parse in parent code is ideal,
-//    but here we avoid touching header logic; a local safe lookup is retained for compatibility.
-if (highestLevel === 0 && typeof window !== "undefined") {
-  try {
-    const taRaw = window.localStorage.getItem("komensky_top_achievements");
-    if (taRaw) {
-      const ta = JSON.parse(taRaw);
-      const arr = ta?.[category];
-      if (Array.isArray(arr)) {
-        const hit = arr.find((t: any) => (t.playNumber ?? t.num ?? t.number) === num);
-        const al = typeof hit?.achievedLevel === "number" ? hit.achievedLevel : 0;
-        if (al > highestLevel) highestLevel = al;
-      }
-    }
-  } catch { /* ignore */ }
-}
-
-// 4) Color class
-let levelColorClass = "level-color-0";
-if (highestLevel >= 4) levelColorClass = "level-color-4-5";
-else if (highestLevel === 3) levelColorClass = "level-color-3";
-else if (highestLevel >= 1) levelColorClass = "level-color-1-2";
-
-return {
-  key: `${category}-${num}`,
-  num,
-  title: a.playTitle ?? a.title,
-  category,
-  minAge,
-  maxAge,
-  highestLevel,
-  levelColorClass,
-};
-})}
-                      onPlaySelect={handlePlaySelect}
-                    />
-                  </div>
-                )}
+          {getPlayCategories().map((category) => (
+            <div key={category}>
+              <div className="max-h-[calc(100vh-200px)] overflow-y-auto" data-category={category}>
+                <PlayListPanel
+                  items={(playData?.[category] || []).map((a: any) => a)}
+                  onPlaySelect={handlePlaySelect}
+                />
               </div>
-            )
-          })}
+            </div>
+          ))}
 
           {selectedTab === "그래프" && Object.keys(playData || {}).length > 0 && (
             <section data-ui="graph-container">
