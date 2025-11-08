@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useEffect } from 'react';
 import type {
   AllCfg, BoxCfg, SmallBoxCfg, FontCfg, LevelBadgeCfg, AgeBadgeCfg, DropdownCfg
 } from '@/lib/ui-design';
@@ -92,18 +92,40 @@ export default function UIDesignDialog() {
 
     CSSStyleDeclaration.prototype.removeProperty = function(prop: string) {
       try {
+        const owner = (this as any).ownerElement || (this as any).ownerNode || null;
+        // don't log global/non-element style objects (reduces noise)
+        if (!owner) return originals.CSS_removeProperty.call(this, prop);
         if (prop && (prop.startsWith('--ui-') || trackedProps.includes(prop))) {
-          console.warn('[ui-design-debug] style.removeProperty', { prop, owner: (this as any).ownerElement || (this as any).ownerNode || null });
+          console.warn('[ui-design-debug] style.removeProperty', { prop, owner });
           console.trace();
         }
       } catch(e) {}
       return originals.CSS_removeProperty.call(this, prop);
     };
 
+    // reentrancy guard to avoid log -> style mutation -> log recursion
     CSSStyleDeclaration.prototype.setProperty = function(name: string, value: string | null, priority?: string) {
       try {
-        if (name && (name.startsWith('--ui-') || trackedProps.includes(name))) {
-          console.info('[ui-design-debug] style.setProperty', { name, value, priority, owner: (this as any).ownerElement || (this as any).ownerNode || null });
+        const owner = (this as any).ownerElement || (this as any).ownerNode || null;
+        // skip logging for non-element style objects (very noisy)
+        if (!owner) return originals.CSS_setProperty.call(this, name, value as any, priority);
+
+        // only track our keys
+        if (!(name && (name.startsWith('--ui-') || trackedProps.includes(name)))) {
+          return originals.CSS_setProperty.call(this, name, value as any, priority);
+        }
+
+        // guard reentrancy
+        const flagKey = '__uiDesignDebug_in_setProperty';
+        if ((window as any)[flagKey]) {
+          return originals.CSS_setProperty.call(this, name, value as any, priority);
+        }
+        (window as any)[flagKey] = true;
+        try {
+          console.info('[ui-design-debug] style.setProperty', { name, value, priority, owner });
+          console.trace();
+        } finally {
+          (window as any)[flagKey] = false;
         }
       } catch(e) {}
       return originals.CSS_setProperty.call(this, name, value as any, priority);
@@ -167,11 +189,32 @@ export default function UIDesignDialog() {
    }
    
   React.useEffect(() => {
-    console.log('[useEffect applyUIDesignCSS] cfgState:', cfg)
-    applyUIDesignGlobal(cfg);
+    if (typeof window === 'undefined') return;
+    if (!cfg) return;
 
-    // expose for manual testing in DevTools console:
-    (window as any).__debug_applyUIDesignCSS = () => applyUIDesignGlobal(cfg);
+    try {
+      const win: any = window;
+      // 직렬화해서 실제로 변경된 경우에만 적용 (순환 참조 방어)
+      let serialized: string;
+      try { serialized = JSON.stringify(cfg); } catch { serialized = String(cfg); }
+      if (win.__komensky_last_cfg_serialized === serialized) return;
+      win.__komensky_last_cfg_serialized = serialized;
+
+      // 재진입 방지 플래그
+      if (win.__komensky_ui_design_applying) return;
+      win.__komensky_ui_design_applying = true;
+
+      try {
+        console.log('[useEffect applyUIDesignCSS] applying cfg');
+        applyUIDesignGlobal(cfg);
+        win.__debug_applyUIDesignCSS = () => applyUIDesignGlobal(cfg);
+      } finally {
+        // sync 변경으로 인한 즉시 재호출을 막기 위해 다음 이벤트 루프에서 플래그 해제
+        setTimeout(() => { win.__komensky_ui_design_applying = false; }, 0);
+      }
+    } catch (e) {
+      console.error('applyUIDesignCSS failed:', e);
+    }
   }, [cfg]);
   const persist = () => saveUIDesignCfg(cfg);
 

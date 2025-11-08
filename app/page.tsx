@@ -27,7 +27,6 @@ import { ChildProfileDialog } from "@/components/child-profile-dialog"
 import { GraphTabs } from "@/components/graph-tabs"
 import { UISettingsProvider } from "@/components/context/UISettingsContext"
 import  UIDesignDialog  from "@/components/UIDesignDialog";
-import { useUISettings } from '@/components/context/UISettingsContext';
 
 
 // --- PATCH: local handler to fix TS2552 ---
@@ -42,7 +41,7 @@ const handlePlaySelect = (category: string, num: number) => {
 };
 
 export default function KomenskyPlayApp() {
-// ===== [BRIDGE] BEGIN =====
+  // DEBUG: 강제 렌더 테스트 / selectedPlay 노출 (fla// ===== [BRIDGE] BEGIN =====
 useEffect(() => {
   const check = () => typeof (window as any).renderDetailPanel === 'function';
   console.log('[BRIDGE] page mount: typeof renderDetailPanel =', typeof (window as any).renderDetailPanel);
@@ -82,8 +81,7 @@ useEffect(() => {
   const [playData, setPlayData] = useState<Record<PlayCategory, any[]>>({} as any)
   const [scrollPositions, setScrollPositions] = useState<Record<PlayCategory, number>>({} as any)
   const [categoryDevelopmentAges, setCategoryDevelopmentAges] = useState<Record<PlayCategory, number>>({} as any)
-  const { settings } = useUISettings();
-  const af = settings.activityFont;
+  // settings 값은 UISettingsProvider가 상위에 적용된 컴포넌트(자식)에서 useContext로 접근하세요.
 
   useEffect(() => {
     const initializeApp = async () => {
