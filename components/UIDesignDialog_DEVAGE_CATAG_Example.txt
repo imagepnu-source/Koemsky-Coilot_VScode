@@ -1,0 +1,28 @@
+/* UIDesignDialog.tsx – DevAge & Catag with UnifiedSection (drop-in example)
+
+추가 import:
+  import UnifiedSection from '@/components/UnifiedSection';
+
+DevAge 교체:
+  <UnifiedSection
+    title="발달 나이(DevAge)"
+    cfg={cfg}
+    update={(k,v)=>setCfg(prev=>({...prev,[k]:v}))}
+    spec={[
+      { label:'Size (px)', type:'number',  path:['devage','size'], props:{min:8,max:64,step:1} },
+      { label:'Bold',      type:'checkbox',path:['devage','bold'] },
+      { label:'Color',     type:'color',   path:['devage','color'] },
+    ]}
+  />
+
+Catag 교체 (Color 제거):
+  <UnifiedSection
+    title="카테고리 발달 나이(Catag)"
+    cfg={cfg}
+    update={(k,v)=>setCfg(prev=>({...prev,[k]:v}))}
+    spec={[
+      { label:'Size (px)', type:'number',  path:['catag','size'], props:{min:8,max:64,step:1} },
+      { label:'Bold',      type:'checkbox',path:['catag','bold'] },
+    ]}
+  />
+*/

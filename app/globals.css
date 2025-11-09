@@ -1,0 +1,447 @@
+/* ---------------------------------------------------------
+ * Annotated on 2025-10-22
+ * Baseline: User-declared reference version (2025-10-21)
+ * File: app/globals.css
+ * Note: Styling-only file. No functional changes; comments explain sections.
+ * --------------------------------------------------------- */
+@import "tailwindcss";
+@import "./ui-color-utilities.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Theme palette (UNCHANGED from user's file) */
+:root {
+  --background: oklch(0.97 0.01 85);
+  --foreground: oklch(0.25 0.04 250);
+  --card: oklch(0.99 0.005 85);
+  --card-foreground: oklch(0.25 0.04 250);
+  --popover: oklch(0.99 0.005 85);
+  --popover-foreground: oklch(0.25 0.04 250);
+  --primary: oklch(0.35 0.08 250);
+  --primary-foreground: oklch(0.98 0.01 85);
+  --secondary: oklch(0.92 0.015 75);
+  --secondary-foreground: oklch(0.25 0.04 250);
+  --muted: oklch(0.94 0.01 75);
+  --muted-foreground: oklch(0.45 0.02 250);
+  --accent: oklch(0.88 0.04 75);
+  --accent-foreground: oklch(0.25 0.04 250);
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.98 0.01 85);
+  --border: oklch(0.88 0.015 75);
+  --input: oklch(0.88 0.015 75);
+  --ring: oklch(0.35 0.08 250);
+  --chart-1: oklch(0.55 0.12 250);
+  --chart-2: oklch(0.65 0.1 75);
+  --chart-3: oklch(0.6 0.08 160);
+  --chart-4: oklch(0.7 0.12 50);
+  --chart-5: oklch(0.5 0.1 280);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.3 0.05 250);
+  --sidebar-foreground: oklch(0.97 0.01 85);
+  --sidebar-primary: oklch(0.65 0.1 75);
+  --sidebar-primary-foreground: oklch(0.97 0.01 85);
+  --sidebar-accent: oklch(0.35 0.06 250);
+  --sidebar-accent-foreground: oklch(0.97 0.01 85);
+  --sidebar-border: oklch(0.35 0.06 250);
+  --sidebar-ring: oklch(0.65 0.1 75);
+
+  /* UI color tokens bridge (NEW) */
+  --ui-title: var(--foreground, #0f172a);
+  --ui-dropdown-bg: var(--card, #ffffff);
+  --ui-dropdown-fg: var(--card-foreground, #0f172a);
+  --ui-app-bg: var(--background, #f8fafc);
+  --ui-card-bg: var(--card, #ffffff);
+  --ui-card-fg: var(--card-foreground, #0f172a);
+  --ui-age-badge-bg: var(--accent, #eef2ff);
+  --ui-age-badge-fg: var(--foreground, #3730a3);
+  --ui-accent: var(--primary, #1d4ed8);
+  --ui-border: var(--border, #e5e7eb);
+  --ui-muted-text: var(--muted-foreground, #6b7280);
+}
+
+/* Dark mode (UNCHANGED), with UI token mapping */
+.dark {
+  --background: oklch(0.18 0.02 250);
+  --foreground: oklch(0.95 0.01 85);
+  --card: oklch(0.22 0.03 250);
+  --card-foreground: oklch(0.95 0.01 85);
+  --popover: oklch(0.22 0.03 250);
+  --popover-foreground: oklch(0.95 0.01 85);
+  --primary: oklch(0.65 0.1 75);
+  --primary-foreground: oklch(0.18 0.02 250);
+  --secondary: oklch(0.28 0.04 250);
+  --secondary-foreground: oklch(0.95 0.01 85);
+  --muted: oklch(0.28 0.04 250);
+  --muted-foreground: oklch(0.7 0.02 85);
+  --accent: oklch(0.35 0.06 250);
+  --accent-foreground: oklch(0.95 0.01 85);
+  --destructive: oklch(0.5 0.18 25);
+  --destructive-foreground: oklch(0.95 0.01 85);
+  --border: oklch(0.32 0.04 250);
+  --input: oklch(0.32 0.04 250);
+  --ring: oklch(0.65 0.1 75);
+  --chart-1: oklch(0.6 0.12 250);
+  --chart-2: oklch(0.7 0.12 75);
+  --chart-3: oklch(0.65 0.1 160);
+  --chart-4: oklch(0.75 0.14 50);
+  --chart-5: oklch(0.6 0.12 280);
+  --sidebar: oklch(0.15 0.02 250);
+  --sidebar-foreground: oklch(0.95 0.01 85);
+  --sidebar-primary: oklch(0.65 0.1 75);
+  --sidebar-primary-foreground: oklch(0.15 0.02 250);
+  --sidebar-accent: oklch(0.28 0.04 250);
+  --sidebar-accent-foreground: oklch(0.95 0.01 85);
+  --sidebar-border: oklch(0.28 0.04 250);
+  --sidebar-ring: oklch(0.65 0.1 75);
+
+  --ui-title: var(--foreground, #e5e7eb);
+  --ui-dropdown-bg: var(--card, #111827);
+  --ui-dropdown-fg: var(--card-foreground, #e5e7eb);
+  --ui-app-bg: var(--background, #0b1020);
+  --ui-card-bg: var(--card, #0f172a);
+  --ui-card-fg: var(--card-foreground, #e5e7eb);
+  --ui-age-badge-bg: var(--accent, #1f2937);
+  --ui-age-badge-fg: var(--foreground, #f9fafb);
+  --ui-accent: var(--primary, #60a5fa);
+  --ui-border: var(--border, #374151);
+  --ui-muted-text: var(--muted-foreground, #9ca3af);
+}
+
+/* Map to Tailwind v4 theme tokens */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* Base layer */
+@layer base {
+  * { @apply border-border outline-ring/50; }
+
+  /* 여기만 교체 */
+  body {
+    @apply bg-background text-foreground;
+    background-color: var(--background); /* 즉시 변수 반영 */
+    color: var(--foreground);
+    transition: background-color 0.25s ease, color 0.25s ease; /* 부드러운 전환 */
+  }
+}
+
+
+/* Range slider styles (unchanged) */
+.range-slider-container { position: relative; height: 2rem; margin: 1rem 0; }
+.range-slider-track { position: absolute; top: 50%; left: 0; right: 0; height: 8px; background: #e5e7eb; border-radius: 4px; transform: translateY(-50%); }
+.range-slider-fill { position: absolute; top: 50%; height: 8px; background: #3b82f6; border-radius: 4px; transform: translateY(-50%); transition: all 0.2s ease; }
+.range-slider-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: transparent; appearance: none; cursor: pointer; outline: none; }
+.range-slider-input::-webkit-slider-thumb { appearance: none; width: 20px; height: 20px; background: #3b82f6; border: 2px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: all 0.2s ease; }
+.range-slider-input::-webkit-slider-thumb:hover { background: #2563eb; transform: scale(1.1); }
+.range-slider-input::-webkit-slider-thumb:active { background: #1d4ed8; transform: scale(1.2); }
+.range-slider-input::-moz-range-thumb { width: 20px; height: 20px; background: #3b82f6; border: 2px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: all 0.2s ease; }
+.range-slider-input::-moz-range-thumb:hover { background: #2563eb; transform: scale(1.1); }
+.range-slider-input::-moz-range-thumb:active { background: #1d4ed8; transform: scale(1.2); }
+.range-slider-input::-moz-range-track { background: transparent; border: none; }
+.range-slider-input.slider-start { z-index: 2; }
+.range-slider-input.slider-end { z-index: 1; }
+.range-slider-labels { display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.75rem; color: #6b7280; }
+:root { --probe-global-css: 1; }
+[data-ui="name-age"] { outline: 1px dashed magenta !important; }
+
+/* === Name/Age Bold 변수 (기본=보통체) === */
+:root { --ui-name-age-weight: 400; }  /* 기본값 */
+
+/* === Graph container (TNDC: BoxCfg 5변수) ===================== */
+:root {
+  --ui-graph-bg: transparent;
+  --ui-graph-border-color: var(--border);
+  --ui-graph-border-width: 10px;
+  --ui-graph-radius: 0px;
+  --ui-graph-padding: 30px;
+}
+
+/* (4) Graph container — application scope */
+[data-ui="graph-container"]{
+  background: var(--ui-graph-bg, transparent);
+  border: var(--ui-graph-border-width, 0px) solid var(--ui-graph-border-color, transparent);
+  border-radius: var(--ui-graph-radius, 0px);
+  padding: var(--ui-graph-padding, 0px);
+}
+
+[data-ui="name-age"], #name-age, .name-age {
+  font-weight: var(--ui-name-age-weight) !important;
+}
+
+/* === Kill-switch for residual floating Bold toggle === */
+.ui-floating-toggle,
+[data-qa="name-age-bold-injected"],
+#name-age-bold,
+[name-age-bold],
+[data-ui-name-age-toggle],
+[data-ui="name-age-toggle"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+/* Also ensure any fixed bottom-right mini widget is hidden */
+body * {
+  /* If any leftover element gets class dynamically, hide via attribute hints */
+}
+
+
+/* === UI Design variable mappings === */
+[data-ui="top-header"] {
+  background: var(--ui-top-header-bg, white);
+  border-width: var(--ui-top-header-border-width, 1px);
+  border-style: solid;
+  border-color: var(--ui-top-header-border-color, #E5E7EB);
+  padding: var(--ui-top-header-padding, 12px);
+}
+
+[data-ui="title"], [data-ui="Title"] {
+
+  font-size: var(--ui-title-size, 18px);
+  font-weight: var(--ui-title-weight, 700);
+  color: var(--ui-title-color, #111);
+
+}
+[data-ui="name-bio"], [data-ui="namebio"], [data-ui="NameBio"], [data-ui="name_bio"] {
+
+  font-size: var(--ui-namebio-size, 16px);
+  font-weight: var(--ui-namebio-weight, 400);
+  color: var(--ui-namebio-color, #111);
+
+}
+[data-ui="devage"], [data-ui="dev-age"], [data-ui="DevAge"], [data-ui="dev_age"] {
+
+  font-size: var(--ui-devage-size, 16px);
+  font-weight: var(--ui-devage-weight, 400);
+  color: var(--ui-devage-color, #111);
+
+}
+[data-ui="catag"] {
+  font-size: var(--ui-catag-size, 14px);
+  font-weight: var(--ui-catag-weight, 400);
+  color: var(--ui-catag-color, #111);
+}
+
+/* === Inlined from globals.ui-vars.css (R6 safe preserve) === */
+/* === UI variable mappings for new controls === */
+
+/* Play List container */
+[data-ui="play-list"] {
+  background: var(--ui-list-bg, white);
+  border-width: var(--ui-list-border-width, 1px);
+  border-style: solid;
+  border-color: var(--ui-list-border-color, #E5E7EB);
+  padding: var(--ui-list-padding, 12px);
+}
+
+/* Activity number & title */
+[data-ui="activity-num"] {
+  font-size: var(--ui-activity-num-size, 14px);
+  font-weight: var(--ui-activity-num-weight, 400);
+  color: var(--ui-activity-num-color, #6B7280);
+}
+[data-ui="activity-title"] {
+  font-size: var(--ui-activity-title-size, 16px);
+  font-weight: var(--ui-activity-title-weight, 700);
+  color: var(--ui-activity-title-color, #111111);
+}
+
+/* Level badge (rounded rect) */
+[data-ui="level-badge"] {
+  height: var(--ui-level-badge-height, 22px);
+  min-height: var(--ui-level-badge-height, 22px);
+  line-height: var(--ui-level-badge-height, 22px);
+  border-radius: var(--ui-level-badge-radius, 10px);
+  background: var(--ui-level-badge-bg, #EEF2FF);
+  font-size: var(--ui-level-badge-font-size, 12px);
+  font-weight: var(--ui-level-badge-font-weight, 700);
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Age badge */
+[data-ui="age-badge"] {
+  font-size: var(--ui-age-badge-font-size, 12px);
+  font-weight: var(--ui-age-badge-font-weight, 400);
+  color: var(--ui-age-badge-color, #111111);
+  border-width: var(--ui-age-badge-border-width, 1px);
+  border-style: solid;
+  border-color: var(--ui-age-badge-border-color, #D1D5DB);
+  background: var(--ui-age-badge-bg, #F9FAFB);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Dropdown (attribute-only, aligned to the top-4 pattern) */
+[data-ui="dropdown"] {
+  font-size: var(--ui-dropdown-size, 14px);
+  font-weight: var(--ui-dropdown-weight, 400);
+  color: var(--ui-dropdown-color, #111);
+  background: var(--ui-dropdown-bg, white);
+  border-width: var(--ui-dropdown-border-width, 1px);
+  border-style: solid;
+  border-color: var(--ui-dropdown-border-color, #D0D0D0);
+}
+[data-ui="dropdown"]:hover {
+  background: var(--ui-dropdown-hover-bg, #F2F2F2);
+}
+
+/* Top container (Application header) — TNDC-aligned */
+[data-ui="top-container"] {
+  background: var(--ui-top-bg, var(--card));
+  border-bottom-width: var(--ui-top-border-width, 1px);
+  border-bottom-style: solid;
+  border-color: var(--ui-top-border-color, var(--border));
+}
+
+/* === TNDC: Detail container (Application scope) ===================== */
+[data-ui="detail"] {
+  background: var(--ui-detail-bg, transparent);
+  border-color: var(--ui-detail-border-color, #E5E7EB);
+  border-width: var(--ui-detail-border-width, 0px);
+  border-style: solid;
+  border-radius: var(--ui-detail-radius, 0px);
+  padding: var(--ui-detail-padding, 0px);
+}
+
+
+/* === UI Design form sizing overrides (ensure present) === */
+.ui-design-form .num-field input[type="number"] { width: 70% !important; }
+.ui-design-form .color-field input[type="color"] { width: 24px; height: 24px; }
+.ui-design-form .color-field input[type="color"] + input[type="text"] { width: 128px; }
+
+/* ===== UI Design: Badge Text consumption overrides (age/level) ===== */
+
+/* Badge · Age 텍스트 (0–4M) */
+[data-ui="age-badge"]{
+  /* 텍스트 */
+  font-size: var(--ui-age-badge-font-size, 12px);
+  font-weight: var(--ui-age-badge-text-weight, 400);
+  color: var(--ui-age-badge-color, #111111);
+  line-height: normal;
+
+  /* 내부 여백: shorthand 우선, 없으면 Y/X 개별값 사용 */
+  padding: var(--ui-age-badge-padding, var(--ui-age-badge-padding-y, 0px) var(--ui-age-badge-padding-x, 0px));
+
+  /* 배경/테두리/라운드 */
+  background: var(--ui-age-badge-bg, transparent);
+  border-style: solid;
+  border-width: var(--ui-age-badge-border-width, 0px);
+  border-color: var(--ui-age-badge-border-color, transparent);
+  border-radius: var(--ui-age-badge-radius, 0px);
+
+  /* 높이 고정이 필요한 경우에만 사용 (없으면 auto) */
+  height: var(--ui-age-badge-height, auto);
+
+  /* 배치 */
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Badge · Level 텍스트 (Lv) */
+[data-ui="level-badge"]{
+  /* 텍스트 */
+  font-size: var(--ui-level-badge-font-size, 12px);
+  font-weight: var(--ui-level-badge-text-weight, 400);
+  color: var(--ui-level-badge-color, #111111);
+  line-height: normal;
+
+  /* 내부 여백 */
+  padding: var(--ui-level-badge-padding, var(--ui-level-badge-padding-y, 0px) var(--ui-level-badge-padding-x, 0px));
+
+  /* 배경/테두리/라운드 */
+  background: var(--ui-level-badge-bg, transparent);
+  border-style: solid;
+  border-width: var(--ui-level-badge-border-width, 0px);
+  border-color: var(--ui-level-badge-border-color, transparent);
+  border-radius: var(--ui-level-badge-radius, 0px);
+
+  display: inline-flex;
+  align-items: center;
+}
+
+/* === UI: hide document scrollbar visually, keep scrolling working (A) === */
+:root.__noDocBar, :root.__noDocBar body { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+:root.__noDocBar::-webkit-scrollbar, :root.__noDocBar body::-webkit-scrollbar { width:0 !important; height:0 !important; display:none !important; }
+/* Optional: also hide at initial load even before class is added */
+html, body { scrollbar-width: none; -ms-overflow-style: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:none; }
+
+/* ===== [Step1] Level badge color tokens (non-breaking) ===== */
+/* 공통: 이 클래스가 자신 또는 하위의 [data-ui="level-badge"]에
+   변수로 색을 공급합니다. 기존 [data-ui="level-badge"] 규칙이
+   이 변수들을 소비합니다. */
+
+.level-color-0,
+.level-color-0 [data-ui="level-badge"] {
+  --ui-level-badge-color: oklch(0.25 0.04 250);
+  --ui-level-badge-border-color: var(--border, oklch(0.88 0.015 75));
+  --ui-level-badge-bg: oklch(0.96 0.01 250);
+  --ui-level-badge-text-weight: 700;
+  --ui-level-badge-border-width: 1px;
+}
+
+.level-color-1-2,
+.level-color-1-2 [data-ui="level-badge"] {
+  --ui-level-badge-color: oklch(0.35 0.08 250);
+  --ui-level-badge-border-color: oklch(0.82 0.02 250);
+  --ui-level-badge-bg: oklch(0.94 0.02 240);
+  --ui-level-badge-text-weight: 700;
+  --ui-level-badge-border-width: 1px;
+}
+
+.level-color-3,
+.level-color-3 [data-ui="level-badge"] {
+  --ui-level-badge-color: oklch(0.42 0.12 170);
+  --ui-level-badge-border-color: oklch(0.80 0.02 170);
+  --ui-level-badge-bg: oklch(0.93 0.03 160);
+  --ui-level-badge-text-weight: 700;
+  --ui-level-badge-border-width: 1px;
+}
+
+.level-color-4-5,
+.level-color-4-5 [data-ui="level-badge"] {
+  --ui-level-badge-color: oklch(0.42 0.12 70);
+  --ui-level-badge-border-color: oklch(0.82 0.03 70);
+  --ui-level-badge-bg: oklch(0.95 0.03 80);
+  --ui-level-badge-text-weight: 800;
+  --ui-level-badge-border-width: 1px;
+}
