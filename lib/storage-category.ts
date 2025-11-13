@@ -8,61 +8,9 @@ import type { PlayRecord, CategoryRecord, PlayCategory, GraphDataEntry } from ".
 import { getCategoryStorageKey } from "./storage-core"
 import { loadChildProfile } from "./storage-core"
 import { loadCategoryDataSync } from "./data-parser"
-import { CalculateDevAgeFromPlayData } from "@/lib/development-calculator"
+import { CalculateDevAgeFromPlayData, computeAchieveMonthOfThePlay } from "@/lib/development-calculator"
 import { calculateCategoryDevelopmentalAgeFromRecord } from "@/lib/storage-core"
 
-
-// Component: saveCategoryPlayRecords — entry point
-
-
-export function saveCategoryPlayRecords(category: string, records: PlayRecord[]): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return;
-  }
-  
-  try {
-    const storageKey = getCategoryStorageKey(category)
-    if (!storageKey) {
-      console.error(`[v0] Invalid category for storage: ${category}`)
-      return
-    }
-
-    console.log(`[v0] Saving ${records.length} records for category ${category}`)
-    localStorage.setItem(storageKey, JSON.stringify(records))
-  } catch (error) {
-    console.error(`[v0] Failed to save play records for category ${category}:`, error)
-  }
-}
-
-// Component: loadCategoryPlayRecords — entry point
-
-export function loadCategoryPlayRecords(category: string): PlayRecord[] {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return [];
-  }
-  
-  try {
-    const storageKey = getCategoryStorageKey(category)
-    if (!storageKey) {
-      console.error(`[v0] Invalid category for loading: ${category}`)
-      return []
-    }
-
-    const data = localStorage.getItem(storageKey)
-    if (!data) return []
-
-    const records = JSON.parse(data)
-    // Convert date strings back to Date objects
-    return records// List render — each item must have stable key
-.map((record: any) => ({
-      ...record,
-      achievedDate: new Date(record.achievedDate),
-    }))
-  } catch (error) {
-    console.error(`[v0] Failed to load play records for category ${category}:`, error)
-    return []
-  }
-}
 
 // Component: saveCategoryRecord — entry point
 
@@ -195,7 +143,6 @@ export function createEmptyCategoryRecord(categoryName: PlayCategory): CategoryR
     provided_playList: [],
     playData: [],
     graphData: [],
-    topAchievements: [],
     categoryDevelopmentalAge: 0,
   }
 
@@ -223,19 +170,12 @@ export function generateGraphDataFromPlayData(record: CategoryRecord): GraphData
     })
 
     if (highestLevel > 0 && latestDate) {
-      // Calculate achieved month from the child's birth date instead of fixed 2023 date
-      const childProfile = loadChildProfile()
-      const referenceDate = childProfile?.birthDate || new Date(2023, 0, 1)
-
-      const achievedMonth =
-        Math.round(
-          ((latestDate.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)) * 100
-        ) / 100
+      // 놀이의 발달 나이 계산 (생물학적 나이가 아님!)
+      const achievedMonth = computeAchieveMonthOfThePlay(playData.minAge, playData.maxAge, highestLevel)
 
       const graphEntry: GraphDataEntry = {
         achieveDate: latestDate,
-        // ↓ 여기를 "실제로 스코프에 있는 플레이 식별자"로 교체
-        playNumber: /* e.g. */ playData.playNumber,  // ← 정확한 변수명 알려주시면 즉시 확정 패치 드립니다
+        playNumber: playData.playNumber,
         achievedLevel_Highest: highestLevel,
         AchieveMonthOfThePlay: achievedMonth,
         achievedMonth: achievedMonth,

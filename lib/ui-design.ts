@@ -5,7 +5,7 @@
 // - Unknown/legacy keys are preserved when saving (we shallow-merge defaults).
 // - Newly added keys for the "Play Detail" tab are given safe defaults.
 //
-// Public API used by components: FontCfg, DropdownCfg, AllCfg, asFont, normalizeDropdown,
+// Public API used by components: FontCfg, DropdownCfg, AllCfg, asFont,
 // loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS.
 
 export type FontCfg = {
@@ -100,10 +100,14 @@ export type AllCfg = {
   activity: FontCfg;
   levelBadge: LevelBadgeCfg;
   ageBadge: AgeBadgeCfg;
+  levelBadgeIndent: number; // Level Badge 오른쪽 여백 (가장 오른쪽과의 거리)
+  ageBadgeIndent: number;   // Age Badge 왼쪽 여백 (가장 왼쪽과의 거리)
+  activityIndent: number;   // Activity (번호+제목) 왼쪽 여백
 
 } & DetailCfg
 
 const STORAGE_KEY = 'komensky_ui_design_v2'
+const CURRENT_VERSION = '2.1' // 버전 관리
 
 // ---- defaults helpers ----
 const font = (size: number, bold = false, color = '#111111'): FontCfg => ({ size, bold, color })
@@ -135,6 +139,9 @@ const defaults: AllCfg = {
   activity: font(14, true, '#111111'),
   levelBadge: { fontSize: 12, bold: false, bg: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', radius: 10, height: 20, paddingX: 6, paddingY: 2 },
   ageBadge:   { fontSize: 11, bold: false, color: '#111111', bg: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', radius: 8, height: 18, paddingX: 6, paddingY: 2, width: 80 },
+  levelBadgeIndent: 0,    // Level Badge 오른쪽 여백 (가장 오른쪽과의 거리)
+  ageBadgeIndent: 0,      // Age Badge 왼쪽 여백 (가장 왼쪽과의 거리)
+  activityIndent: 8,      // Activity (번호+제목) 왼쪽 여백
 
   // detail (new)
   detailPanelBox: sbox('#FFFFFF', 1, 'rgba(0,0,0,0.12)', 12),
@@ -152,12 +159,52 @@ const defaults: AllCfg = {
   safetyBody: { size: 13, bold: false, color: '#92400E', indent: 10 },
 }
 
-// Shallow merge helper (preserves extra legacy keys)
+/**
+ * Deep merge helper: 기본값과 저장된 값을 병합
+ * - 기본값에 있는 키만 사용 (사용하지 않는 구 버전 키는 자동 제거)
+ * - 저장된 값에 없는 키는 기본값에서 가져옴 (새 버전 키 자동 추가)
+ * - 중첩된 객체도 재귀적으로 병합
+ */
+function deepMergeWithDefaults<T extends Record<string, any>>(
+  defaultValue: T, 
+  savedValue: Partial<T> | undefined | null
+): T {
+  if (!savedValue || typeof savedValue !== 'object') {
+    return { ...defaultValue }
+  }
+
+  const result: any = {}
+
+  // 기본값의 모든 키를 순회 (기본값에 있는 키만 사용)
+  for (const key in defaultValue) {
+    const defVal = defaultValue[key]
+    const savedVal = savedValue[key]
+
+    // 값이 객체이고 배열이 아닌 경우 재귀 병합
+    if (
+      defVal && 
+      typeof defVal === 'object' && 
+      !Array.isArray(defVal) &&
+      savedVal &&
+      typeof savedVal === 'object' &&
+      !Array.isArray(savedVal)
+    ) {
+      result[key] = deepMergeWithDefaults(defVal, savedVal)
+    } 
+    // 저장된 값이 있으면 사용, 없으면 기본값 사용
+    else if (savedVal !== undefined && savedVal !== null) {
+      result[key] = savedVal
+    } else {
+      result[key] = defVal
+    }
+  }
+
+  return result as T
+}
+
+// Shallow merge helper (backward compatibility, deprecated)
 function mergeDefaults<T extends Record<string, any>>(def: T, val: Partial<T> | undefined): T {
-  const out: any = { ...def, ...(val || {}) }
-  if (val?.border && 'border' in def) out.border = { ...def.border, ...val.border }
-  if ('dropdown' in def && (val as any)?.dropdown) out.dropdown = { ...def.dropdown, ...(val as any).dropdown }
-  return out
+  return deepMergeWithDefaults(def, val)
 }
 
 /** asFont: 다양한 입력값을 FontCfg로 정규화하는 안전한 헬퍼 */
@@ -192,38 +239,36 @@ export function loadUIDesignCfg(): AllCfg {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...defaults }
+    
     const parsed = JSON.parse(raw)
-    const merged: any = { ...defaults, ...(parsed || {}) }
-
-    merged.topHeaderBox = mergeDefaults(defaults.topHeaderBox, parsed?.topHeaderBox)
-    merged.playListBox  = mergeDefaults(defaults.playListBox,  parsed?.playListBox)
-    merged.dropdown     = mergeDefaults(defaults.dropdown,     parsed?.dropdown)
-
-    merged.activityBox   = { ...defaults.activityBox,   ...(parsed?.activityBox   || {}) }
-    merged.levelBadgeBox = { ...defaults.levelBadgeBox, ...(parsed?.levelBadgeBox || {}) }
-    merged.detailSmallBox = { ...defaults.detailSmallBox, ...(parsed?.detailSmallBox || {}) }
-    merged.detailHeaderBox = { ...defaults.detailHeaderBox, ...(parsed?.detailHeaderBox || {}) }
-    merged.safetySmallBox = { ...defaults.safetySmallBox, ...(parsed?.safetySmallBox || {}) }
-
-    merged.title        = { ...defaults.title,        ...(parsed?.title        || {}) }
-    merged.namebio      = { ...defaults.namebio,      ...(parsed?.namebio      || {}) }
-    merged.devage       = { ...defaults.devage,       ...(parsed?.devage       || {}) }
-    merged.activity     = { ...defaults.activity,     ...(parsed?.activity     || {}) }
-    merged.detailHeaderTitle = { ...defaults.detailHeaderTitle, ...(parsed?.detailHeaderTitle || {}) }
-    merged.detailTitle  = { ...defaults.detailTitle,  ...(parsed?.detailTitle  || {}) }
-    merged.detailBody   = { ...defaults.detailBody,   ...(parsed?.detailBody   || {}) }
-    merged.safetyTitle  = { ...defaults.safetyTitle,  ...(parsed?.safetyTitle  || {}) }
-    merged.safetyBody   = { ...defaults.safetyBody,   ...(parsed?.safetyBody   || {}) }
-    merged.difficultyCheckbox = { ...defaults.difficultyCheckbox, ...(parsed?.difficultyCheckbox || {}) }
-    merged.detailHeaderListBtn = { ...defaults.detailHeaderListBtn, ...(parsed?.detailHeaderListBtn || {}) }
-    merged.detailHeaderPrevBtn = { ...defaults.detailHeaderPrevBtn, ...(parsed?.detailHeaderPrevBtn || {}) }
-    merged.detailHeaderNextBtn = { ...defaults.detailHeaderNextBtn, ...(parsed?.detailHeaderNextBtn || {}) }
-    merged.levelBadge   = { ...defaults.levelBadge,   ...(parsed?.levelBadge   || {}) }
-    merged.ageBadge     = { ...defaults.ageBadge,     ...(parsed?.ageBadge     || {}) }
-
+    
+    // 버전 체크 및 마이그레이션 로그
+    const savedVersion = parsed._version || '1.0'
+    if (savedVersion !== CURRENT_VERSION) {
+      console.log(`[ui-design] Migrating from v${savedVersion} to v${CURRENT_VERSION}`)
+    }
+    
+    // Deep merge: 기본값을 기준으로 저장된 값을 병합
+    // - 새로운 키는 기본값에서 자동 추가
+    // - 사용하지 않는 구 버전 키는 자동 제거
+    const merged = deepMergeWithDefaults(defaults, parsed)
+    
+    // 버전 정보 추가
+    ;(merged as any)._version = CURRENT_VERSION
+    
+    // 마이그레이션 후 자동 저장 (선택적)
+    if (savedVersion !== CURRENT_VERSION) {
+      console.log('[ui-design] Auto-saving migrated settings')
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+      } catch (e) {
+        console.warn('[ui-design] Auto-save failed:', e)
+      }
+    }
+    
     return merged as AllCfg
   } catch (e) {
-    console.warn('[ui-design] load failed, using defaults:', e)
+    console.warn('[ui-design] Load failed, using defaults:', e)
     return { ...defaults }
   }
 }
@@ -235,10 +280,24 @@ export function saveUIDesignCfg(cfg: AllCfg) {
   }
 
   try {
-    const next = { ...defaults, ...(cfg as any) }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    // Deep merge with defaults to ensure all required keys exist
+    const merged = deepMergeWithDefaults(defaults, cfg as any)
+    
+    // Add version info
+    ;(merged as any)._version = CURRENT_VERSION
+    ;(merged as any)._savedAt = new Date().toISOString()
+    
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+    console.log(`[ui-design] Saved settings v${CURRENT_VERSION}`)
+    
+    // Notify other components that UI design was updated
+    try {
+      window.dispatchEvent(new CustomEvent('ui-design-updated'))
+    } catch (e) {
+      console.warn('[ui-design] Failed to dispatch update event:', e)
+    }
   } catch (e) {
-    console.error('[ui-design] save failed:', e)
+    console.error('[ui-design] Save failed:', e)
   }
 }
 
@@ -312,6 +371,11 @@ export function applyUIDesignCSS(cfg: AllCfg) {
   set('--kp-age-badge-height', (cfg.ageBadge?.height ?? defaults.ageBadge.height) + 'px')
   set('--kp-age-badge-padding', `${cfg.ageBadge?.paddingY ?? defaults.ageBadge.paddingY}px ${cfg.ageBadge?.paddingX ?? defaults.ageBadge.paddingX}px`)
   set('--kp-age-badge-width', (cfg.ageBadge?.width ?? defaults.ageBadge.width) + 'px')
+  
+  // List Indents
+  set('--kp-level-badge-indent', (cfg.levelBadgeIndent ?? defaults.levelBadgeIndent) + 'px')
+  set('--kp-age-badge-indent', (cfg.ageBadgeIndent ?? defaults.ageBadgeIndent) + 'px')
+  set('--kp-activity-indent', (cfg.activityIndent ?? defaults.activityIndent) + 'px')
 
   // Detail Panel (최상위 컨테이너)
   set('--kp-detail-panel-bg', String(cfg.detailPanelBox?.bg ?? defaults.detailPanelBox.bg))

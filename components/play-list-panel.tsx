@@ -105,11 +105,16 @@ export default function PlayListPanel({ items, onPlaySelect }: PlayListPanelProp
               }}
             >
               {/* Age Badge → 번호+제목 텍스트 → Level Badge */}
-              <div data-ui="age-badge" className="shrink-0 inline-flex items-center" style={ageBadgeStyle}>
+              <div data-ui="age-badge" className="shrink-0 inline-flex items-center" style={{
+                ...ageBadgeStyle,
+                marginLeft: "var(--kp-age-badge-indent, 0px)"
+              }}>
                 {formatAge(it.minAge, it.maxAge)}
               </div>
 
-              <div className="flex-1 flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-2" style={{
+                marginLeft: "var(--kp-activity-indent, 8px)"
+              }}>
                 <span
                   data-ui="activity-text"
                   style={{
@@ -125,7 +130,10 @@ export default function PlayListPanel({ items, onPlaySelect }: PlayListPanelProp
               <div
                 data-ui="level-badge"
                 className={`shrink-0 inline-flex items-center ${levelColorClass}`}
-                style={levelBadgeStyle}
+                style={{
+                  ...levelBadgeStyle,
+                  marginRight: "var(--kp-level-badge-indent, 0px)"
+                }}
               >
                 {highestLevel}
               </div>

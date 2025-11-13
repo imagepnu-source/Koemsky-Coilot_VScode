@@ -123,6 +123,24 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
     setTempRangeEnd(totalDays)
   }, [totalDays])
 
+  // Listen for recalculateCategory events and clear cache for that category
+  useEffect(() => {
+    const handleCategoryRecalculation = (event: CustomEvent<{ category: string }>) => {
+      const category = event.detail.category
+      console.log(`[TimeAxisGraph] Clearing cache for category: ${category}`)
+      setCategoryGraphDataCache((prevCache) => {
+        const newCache = new Map(prevCache)
+        newCache.delete(category)
+        return newCache
+      })
+    }
+
+    window.addEventListener("recalculateCategory", handleCategoryRecalculation as EventListener)
+    return () => {
+      window.removeEventListener("recalculateCategory", handleCategoryRecalculation as EventListener)
+    }
+  }, [])
+
   const [tempRangeStart, setTempRangeStart] = useState(rangeStart)
   const [tempRangeEnd, setTempRangeEnd] = useState(rangeEnd)
 
@@ -142,15 +160,33 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
         try {
           const categoryKey = `komensky_category_record_${category}`
           const categoryRecordStr = localStorage.getItem(categoryKey)
-          if (!categoryRecordStr) return []
+          
+          console.log(`[TimeAxisGraph] Loading data for category: "${category}", key: "${categoryKey}"`)
+          
+          if (!categoryRecordStr) {
+            console.warn(`[TimeAxisGraph] No data found for key: ${categoryKey}`)
+            return []
+          }
 
           const categoryRecord = JSON.parse(categoryRecordStr)
-          if (!categoryRecord.graphData || categoryRecord.graphData.length === 0) return []
+          console.log(`[TimeAxisGraph] Parsed data for ${category}:`, {
+            playDataCount: categoryRecord.playData?.length || 0,
+            graphDataCount: categoryRecord.graphData?.length || 0
+          })
+          
+          if (!categoryRecord.graphData || categoryRecord.graphData.length === 0) {
+            console.warn(`[TimeAxisGraph] Empty graphData for ${category}`)
+            return []
+          }
 
           graphData = categoryRecord.graphData as any[]
-        } catch {
+          console.log(`[TimeAxisGraph] Loaded ${graphData.length} graph entries for ${category}`)
+        } catch (error) {
+          console.error(`[TimeAxisGraph] Error loading data for ${category}:`, error)
           return []
         }
+      } else {
+        console.log(`[TimeAxisGraph] Using cached data for ${category}: ${graphData.length} entries`)
       }
       return graphData ?? []  // ← 항상 배열 보장
     },
@@ -798,8 +834,10 @@ visiblePoints.forEach((point) => {
     const updateChartSize = () => {
       if (containerRef.current) {
         const containerWidth = containerRef.current.offsetWidth
-        const chartWidth = Math.min(containerWidth - 32, 800)
-        const chartHeight = Math.max(375, Math.min(450, chartWidth * 0.5625))
+        // 최대 너비 제한 제거: 컨테이너 전체 너비 사용 (양쪽 패딩 32px만 제외)
+        const chartWidth = containerWidth - 32
+        // 높이는 최소 375px, 최대 500px, 기본은 너비의 50% (16:9 비율보다 약간 낮음)
+        const chartHeight = Math.max(375, Math.min(500, chartWidth * 0.5))
 
         setChartDimensions({ width: chartWidth, height: chartHeight })
       }
@@ -894,15 +932,15 @@ visiblePoints.forEach((point) => {
               ))}
             </div>
 
-            <div className="flex justify-center overflow-x-auto">
-              <div className="relative">
+            <div className="flex justify-center">
+              <div className="relative w-full">
                 <svg
                   ref={svgRef}
                   width={chartDimensions.width}
                   height={chartDimensions.height}
                   viewBox={`0 0 ${chartDimensions.width} ${chartDimensions.height}`}
                   preserveAspectRatio="none"  
-                  style={{ display: "block" }}
+                  style={{ display: "block", width: "100%", height: "auto" }}
                   className="border"    
                 />
                 {tooltipVisible && tooltipRef.current && (

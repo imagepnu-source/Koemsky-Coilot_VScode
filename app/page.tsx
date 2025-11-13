@@ -106,7 +106,7 @@ useEffect(() => {
 
     initializeApp()
 
-    const handleCategoryRecalculation = (event: CustomEvent) => {
+    const handleCategoryRecalculation = (event: CustomEvent<{ category: PlayCategory }>) => {
       const targetCategory = event.detail.category
       try {
         const record = loadCategoryRecord(targetCategory)
@@ -116,6 +116,42 @@ useEffect(() => {
           ...prev,
           [targetCategory]: Math.round(categoryAge * 100) / 100,
         }))
+        
+        // Update playData to reflect new achievedLevelFlags
+        setPlayData((prevData) => {
+          const categoryActivities = prevData[targetCategory]
+          if (!categoryActivities) return prevData
+          
+          // CategoryRecord의 playData에 있는 playNumber 목록
+          const activePlayNumbers = new Set(record?.playData.map(pd => pd.playNumber) ?? [])
+          
+          const updatedActivities = categoryActivities.map((activity: any) => {
+            const playNumber = activity.number ?? activity.playNumber
+            const playDataEntry = record?.playData.find(pd => pd.playNumber === playNumber)
+            
+            // playData에서 삭제된 항목은 achievedLevelFlags를 모두 false로 초기화
+            if (!playDataEntry) {
+              return {
+                ...activity,
+                achievedLevelFlags: [false, false, false, false, false],
+                achievedDates: [undefined, undefined, undefined, undefined, undefined]
+              }
+            }
+            
+            return {
+              ...activity,
+              achievedLevelFlags: playDataEntry.achievedLevelFlags,
+              achievedDates: playDataEntry.achievedDates
+            }
+          })
+          
+          console.log(`[v0] Updated playData for ${targetCategory}: ${updatedActivities.length} activities, ${activePlayNumbers.size} with achievements`)
+          
+          return {
+            ...prevData,
+            [targetCategory]: updatedActivities
+          }
+        })
       } catch (error) {
         console.error(`Failed to load achievements for ${targetCategory}:`, error)
         setCategoryDevelopmentAges((prev) => ({
@@ -134,7 +170,18 @@ useEffect(() => {
         const categoriesData = await loadAllCategoriesIndependently()
         const convertedData: Record<PlayCategory, any[]> = {} as any
         Object.entries(categoriesData).forEach(([category, activities]) => {
-          convertedData[category as PlayCategory] = activities
+          // Merge with CategoryRecord playData to get achievedLevelFlags
+          const record = loadCategoryRecord(category as PlayCategory)
+          const mergedActivities = activities.map((activity: any) => {
+            const playNumber = activity.number ?? activity.playNumber
+            const playDataEntry = record?.playData.find(pd => pd.playNumber === playNumber)
+            return {
+              ...activity,
+              achievedLevelFlags: playDataEntry?.achievedLevelFlags ?? [false, false, false, false, false],
+              achievedDates: playDataEntry?.achievedDates ?? [undefined, undefined, undefined, undefined, undefined]
+            }
+          })
+          convertedData[category as PlayCategory] = mergedActivities
         })
         setPlayData(convertedData)
 
@@ -352,7 +399,7 @@ useEffect(() => {
               fontWeight: 'var(--kp-catag-weight, 700)',
               color: 'var(--kp-catag-color, inherit)'
             }}>
-              {selectedTab !== "그래프" ? `${selectedTab} 나이: ${currentCategoryAge.toFixed(2)}개월` : " "}
+              {selectedTab !== "그래프" ? `${selectedTab.split(',')[0].trim()} 나이: ${currentCategoryAge.toFixed(2)}개월` : " "}
             </div>
             <div>
               <Select value={selectedTab} onValueChange={handleTabChange}>
@@ -360,11 +407,14 @@ useEffect(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {getPlayCategories().map((category) => (
-                    <SelectItem key={category} value={category}>
-                      <span style={{ color: categoryColors[category] }}>{category}</span>
-                    </SelectItem>
-                  ))}
+                  {getPlayCategories().map((category) => {
+                    const displayName = category.split(',')[0].trim();
+                    return (
+                      <SelectItem key={category} value={category}>
+                        <span style={{ color: categoryColors[category] }}>{displayName}</span>
+                      </SelectItem>
+                    );
+                  })}
                   <SelectItem value="그래프">그래프</SelectItem>
                 </SelectContent>
               </Select>
@@ -433,24 +483,7 @@ if (typeof hinted === "number") {
   }
 }
 
-// 3) If still 0, fallback to komensky_top_achievements (category+num match) — single parse in parent code is ideal,
-//    but here we avoid touching header logic; a local safe lookup is retained for compatibility.
-if (highestLevel === 0 && typeof window !== "undefined") {
-  try {
-    const taRaw = window.localStorage.getItem("komensky_top_achievements");
-    if (taRaw) {
-      const ta = JSON.parse(taRaw);
-      const arr = ta?.[category];
-      if (Array.isArray(arr)) {
-        const hit = arr.find((t: any) => (t.playNumber ?? t.num ?? t.number) === num);
-        const al = typeof hit?.achievedLevel === "number" ? hit.achievedLevel : 0;
-        if (al > highestLevel) highestLevel = al;
-      }
-    }
-  } catch { /* ignore */ }
-}
-
-// 4) Color class
+// 3) Color class
 let levelColorClass = "level-color-0";
 if (highestLevel >= 4) levelColorClass = "level-color-4-5";
 else if (highestLevel === 3) levelColorClass = "level-color-3";
@@ -458,7 +491,14 @@ else if (highestLevel >= 1) levelColorClass = "level-color-1-2";
 
 // Debug: 첫 번째 항목만 로그 출력
 if (num === 1) {
-  console.log('[AGE DEBUG]', { num, minAge, maxAge, raw: { minAge: a.minAge, maxAge: a.maxAge } });
+  console.log('[AGE DEBUG]', { 
+    num, minAge, maxAge, 
+    raw: { minAge: a.minAge, maxAge: a.maxAge },
+    achievedLevelFlags: a.achievedLevelFlags,
+    achievedDates: a.achievedDates,
+    flags,
+    highestLevel
+  });
 }
 
 return {

@@ -1,14 +1,13 @@
 
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { CheckedState } from "@radix-ui/react-checkbox"
 
 import { parseDetailedActivity, loadCategoryData, getEnglishCategoryName } from "@/lib/data-parser"
-import { updateCategoryAchievement, removeCategoryAchievement } from "@/lib/category-achievements-manager"
 import { loadCategoryRecord, updateCategoryPlayData } from "@/lib/storage-category"
 import type { PlayCategory, DetailedActivity } from "@/lib/types"
 import { loadUIDesignCfg as _loadUIDesignCfg } from "@/lib/ui-design"
@@ -82,7 +81,34 @@ function fillText(t?: TextStyle, base: Required<TextStyle> = BODY_DEFAULT): Requ
 }
 
 function useDetailDesign(): { panel: Required<BoxStyle>; box: Required<BoxStyle>; title: Required<TextStyle>; body: Required<TextStyle> } {
-  const raw = useMemo<UIDetailCfg>(() => { try { return (_loadUIDesignCfg?.() ?? {}) as UIDetailCfg } catch { return {} as UIDetailCfg } }, [])
+  // UI 설정이 변경되면 자동으로 다시 로드
+  const [configVersion, setConfigVersion] = React.useState(0)
+  
+  React.useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'komensky_ui_design_v2') {
+        setConfigVersion(v => v + 1)
+      }
+    }
+    
+    const handleCustomUpdate = () => {
+      setConfigVersion(v => v + 1)
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('ui-design-updated', handleCustomUpdate)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('ui-design-updated', handleCustomUpdate)
+    }
+  }, [])
+  
+  const raw = useMemo<UIDetailCfg>(() => { 
+    try { return (_loadUIDesignCfg?.() ?? {}) as UIDetailCfg } 
+    catch { return {} as UIDetailCfg } 
+  }, [configVersion]) // configVersion이 변경되면 다시 로드
+  
   const d = raw.detail ?? {}
   return { panel: fillPanel(d.panel), box: fillBox(d.box), title: fillText(d.title, TITLE_DEFAULT), body: fillText(d.body, BODY_DEFAULT) }
 }
@@ -191,25 +217,7 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
     if (checked !== true && checked !== false) return
     const newLevels = [...completedLevels]; newLevels[levelIndex] = checked; setCompletedLevels(newLevels)
     updateCategoryPlayData(category, playNumber, levelIndex, checked)
-    const selected = newLevels.map((v,i)=>v?i+1:null).filter((v): v is number => v!==null)
-    const hi = selected.length? Math.max(...selected) : 0
-    updateAchievements(hi)
-  }
-  const updateAchievements = (achievedLevel: number) => {
-    if (!detailData || !playActivity) return
-    if (achievedLevel > 0) {
-      const act = { category, ...playActivity } as { category: PlayCategory } & PlayActivityLite
-      updateCategoryAchievement(category, act, achievedLevel, new Date())
-      setTimeout(()=>{ window.dispatchEvent(new CustomEvent("recalculateCategory", { detail: { category } })) }, 0)
-    } else {
-      const rec = loadCategoryRecord(category)
-      if (rec?.topAchievements) {
-        rec.topAchievements.filter(a => a.playNumber === playNumber).forEach(a => {
-          removeCategoryAchievement(category, a.playNumber, a.achievedLevel, a.developmentAge)
-        })
-      }
-      setTimeout(()=>{ window.dispatchEvent(new CustomEvent("recalculateCategory", { detail: { category } })) }, 0)
-    }
+    setTimeout(()=>{ window.dispatchEvent(new CustomEvent("recalculateCategory", { detail: { category } })) }, 0)
   }
   const renderTextWithLineBreaks = (text: string) => {
     const t = text ?? ""

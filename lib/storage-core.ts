@@ -126,89 +126,6 @@ export function loadLastSelectedTab(): string {
   }
 }
 
-// Component: generateGraphDataFromPlayData — entry point
-
-export function generateGraphDataFromPlayData(record: CategoryRecord): GraphDataEntry[] {
-  const graphData: GraphDataEntry[] = []
-
-  record.playData.forEach((playData) => {
-    // Find the highest achieved level for this play
-    let highestLevel = 0
-    let latestDate: Date | undefined
-
-    playData.achievedLevelFlags.forEach((achieved, levelIndex) => {
-      if (achieved) {
-        const level = levelIndex + 1
-        if (level > highestLevel) {
-          highestLevel = level
-          latestDate = playData.achievedDates[levelIndex]
-        }
-      }
-    })
-
-    if (highestLevel > 0 && latestDate) {
-      // 난이도 기반 발달 개월 계산 (소수점 2자리)
-      const month = computeAchieveMonthOfThePlay(playData.minAge, playData.maxAge, highestLevel)
-      const graphEntry: GraphDataEntry = {
-        achieveDate: latestDate,
-        playNumber: playData.playNumber,
-        achievedLevel_Highest: highestLevel,
-        AchieveMonthOfThePlay: month,
-        achievedMonth: month,        // ← 레거시 호환: 기존 그래프 코드가 참조
-        playTitle: playData.playTitle, // (옵션) 시각화·디버그에 유용
-      }
-      graphData.push(graphEntry)
-    }
-  })
-
-  return graphData
-}
-
-// Component: saveTopAchievements — entry point
-
-export function saveTopAchievements(achievements: CategoryAchievements): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return;
-  }
-  
-  try {
-    localStorage.setItem(STORAGE_KEYS.TOP_ACHIEVEMENTS, JSON.stringify(achievements))
-    console.log(`[v0] Saved global top achievements for ${Object.keys(achievements).length} categories`)
-  } catch (error) {
-    console.error("Failed to save top achievements:", error)
-  }
-}
-
-// Component: loadTopAchievements — entry point
-
-export function loadTopAchievements(): CategoryAchievements {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return {};
-  }
-  
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.TOP_ACHIEVEMENTS)
-    if (!data) return {}
-
-    const achievements = JSON.parse(data)
-
-    // Convert date strings back to Date objects
-    Object.keys(achievements).forEach((category) => {
-      achievements[category] = achievements[category]// List render — each item must have stable key
-.map((achievement: any) => ({
-        ...achievement,
-        achievedDate: new Date(achievement.achievedDate),
-      }))
-    })
-
-    console.log(`[v0] Loaded global top achievements for ${Object.keys(achievements).length} categories`)
-    return achievements
-  } catch (error) {
-    console.error("Failed to load top achievements:", error)
-    return {}
-  }
-}
-
 export const CATEGORY_STORAGE_KEYS = new Proxy({} as Record<string, string>, {
   get(target, prop: string) {
     return getCategoryStorageKey(prop)
@@ -230,7 +147,21 @@ export const CATEGORY_STORAGE_KEYS = new Proxy({} as Record<string, string>, {
 
  export function calculateCategoryDevelopmentalAgeFromRecord(record: CategoryRecord): number {
    console.log(`[v0] STORAGE_CORE: Using centralized calculation for category developmental age`)
-  const { devlopedAge } = CalculateDevAgeFromPlayData(record.playData)
+  const { devlopedAge, items } = CalculateDevAgeFromPlayData(record.playData)
+  
+  // 대근육 전용 디버그
+  if (record.categoryName === "대근육") {
+    console.log(`[DEBUG] 대근육 발달나이 계산:`, {
+      총놀이수: record.playData.length,
+      체크된놀이수: items.length,
+      계산된발달나이: devlopedAge,
+      상위3개: items.slice(0, 3).sort((a,b) => b.AchieveMonthOfThePlay - a.AchieveMonthOfThePlay).map(i => ({
+        놀이번호: i.playNumber,
+        발달개월: i.AchieveMonthOfThePlay
+      }))
+    });
+  }
+  
   record.categoryDevelopmentalAge = devlopedAge
   return devlopedAge
  }

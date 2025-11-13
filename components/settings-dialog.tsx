@@ -19,6 +19,7 @@ import { loadChildProfile, saveChildProfile } from "@/lib/storage-core"
 import { TestDataProgressDialog } from "./test-data-progress-dialog"
 import { getGlobalKoreanNames } from "@/lib/global-categories"
 import type { ChildProfile } from "@/lib/types"
+import { loadUIDesignCfg, saveUIDesignCfg } from "@/lib/ui-design"
 
 interface SettingsDialogProps {
   open: boolean
@@ -107,12 +108,16 @@ export function SettingsDialog({
         }, 0)
       })
 
-      setTempMessage("테스트 데이터가 생성되고 로드되었습니다.")
-      setTimeout(() => setTempMessage(""), 2000)
+      setTempMessage("테스트 데이터가 생성되었습니다. 페이지를 새로고침하세요.")
+      
+      // 그래프 캐시를 강제로 무효화하기 위해 2초 후 페이지 새로고침
+      setTimeout(() => {
+        console.log("[v0] Reloading page to refresh graph data...")
+        window.location.reload()
+      }, 2000)
     } catch (error) {
       console.error("[v0] Test data generation error:", error)
       alert("테스트 데이터 생성 중 오류가 발생했습니다.")
-    } finally {
       setIsGenerating(false)
       setShowProgress(false)
     }
@@ -179,6 +184,66 @@ export function SettingsDialog({
     }
   }
 
+  const handleBackupUISettings = () => {
+    try {
+      const uiSettings = loadUIDesignCfg()
+      const jsonData = JSON.stringify(uiSettings, null, 2)
+      const blob = new Blob([jsonData], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ui-settings-backup-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      alert("UI 설정이 백업되었습니다.")
+    } catch (error) {
+      console.error("[v0] UI Settings backup error:", error)
+      alert("UI 설정 백업 중 오류가 발생했습니다.")
+    }
+  }
+
+  const handleRestoreUISettings = () => {
+    try {
+      const input = document.createElement("input")
+      input.type = "file"
+      input.accept = ".json"
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (file) {
+          const reader = new FileReader()
+          reader.onload = (event) => {
+            try {
+              const jsonData = event.target?.result as string
+              const uiSettings = JSON.parse(jsonData)
+              
+              // 버전 정보 확인
+              const importVersion = uiSettings._version || '구 버전'
+              console.log(`[Settings] Importing UI settings from v${importVersion}`)
+              
+              // saveUIDesignCfg가 자동으로 버전 호환성 처리
+              // - 모자라는 키는 기본값에서 추가
+              // - 사용하지 않는 키는 자동 제거
+              saveUIDesignCfg(uiSettings)
+              
+              alert(`UI 설정이 복원되었습니다.\n(${importVersion} → 현재 버전)\n페이지를 새로고침합니다.`)
+              window.location.reload()
+            } catch (error) {
+              console.error("[v0] UI Settings restore error:", error)
+              alert("UI 설정 복원에 실패했습니다. 파일 형식을 확인해주세요.")
+            }
+          }
+          reader.readAsText(file)
+        }
+      }
+      input.click()
+    } catch (error) {
+      console.error("[v0] UI Settings restore error:", error)
+      alert("UI 설정 복원 중 오류가 발생했습니다.")
+    }
+  }
+
   const handleClearAllRecords = () => {
     try {
       console.log("[v0] Clearing all play records...")
@@ -203,7 +268,6 @@ export function SettingsDialog({
               ...existingRecord,
               playData: [],
               graphData: [],
-              topAchievements: [],
               categoryDevelopmentalAge: 0,
             }
             localStorage.setItem(categoryKey, JSON.stringify(clearedRecord))
@@ -216,9 +280,6 @@ export function SettingsDialog({
           }
         }
       })
-
-      localStorage.removeItem("komensky_top_achievements")
-      console.log("[v0] Cleared global top achievements")
 
       console.log("[v0] CATEGORY_INDEPENDENCE: Triggering recalculation for all categories after clearing records")
       categories.forEach((category) => {
@@ -333,6 +394,20 @@ export function SettingsDialog({
                 </Button>
                 <Button onClick={handleRestoreData} className="w-full bg-transparent" variant="outline">
                   아이 데이터 복원
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">UI 설정 관리</h3>
+              <div className="space-y-2">
+                <Button onClick={handleBackupUISettings} className="w-full bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" variant="outline">
+                  UI 설정 백업
+                </Button>
+                <Button onClick={handleRestoreUISettings} className="w-full bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" variant="outline">
+                  UI 설정 복원
                 </Button>
               </div>
             </div>

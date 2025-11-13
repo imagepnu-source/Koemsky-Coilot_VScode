@@ -92,7 +92,7 @@ export default function ColorSettingsDialog() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
       <div
-        className="w-[780px] max-w-[95vw] rounded-xl bg-white shadow-2xl p-4"
+        className="w-full max-w-[95vw] sm:max-w-[780px] rounded-xl bg-white shadow-2xl p-4 mx-4"
         style={{ color: 'var(--ui-card-fg)' }}
       >
         <div className="flex items-center justify-between mb-2">

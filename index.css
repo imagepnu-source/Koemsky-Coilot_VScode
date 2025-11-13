@@ -50,7 +50,8 @@ html {
 }
 
 #app {
-  max-width: 1200px;
+  /* 반응형: 최대 폭 제한 제거, 화면 전체 너비 사용 */
+  width: 100%;
   margin: 0 auto;
   padding: 20px;
   display: flex;
@@ -568,7 +569,9 @@ h2 {
   background: white;
   padding: 30px;
   border-radius: 8px;
-  max-width: 400px;
+  /* 반응형: 고정 폭 제거, 최대 90vw 사용 */
+  width: 90%;
+  max-width: 600px;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
   text-align: center;
 }
@@ -662,7 +665,9 @@ h2 {
   background: white;
   padding: 20px 30px 30px;
   border-radius: 8px;
-  max-width: 500px;
+  /* 반응형: 고정 폭 제거, 화면 너비의 90% 또는 최대 700px */
+  width: 90%;
+  max-width: 700px;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 /* Section: .settings-header */

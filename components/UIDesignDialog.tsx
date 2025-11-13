@@ -181,6 +181,16 @@ export default function UIDesignDialog() {
                           <FontSection title="Activity (번호+제목) 텍스트" value={asFont(cfg.activity)} onChange={v=>update('activity', v)} />
                           <LevelBadgeEditor title="Badge · Level 텍스트" value={cfg.levelBadge} onChange={v=>update('levelBadge', v)} />
                           <AgeBadgeEditor   title="Badge · Age 텍스트"   value={cfg.ageBadge}   onChange={v=>update('ageBadge', v)} />
+                          
+                          {/* Badge와 Activity 텍스트 Indent */}
+                          <div className="p-3 rounded-lg border bg-white">
+                            <div className="font-semibold mb-2">List Indent (거리두기)</div>
+                            <div className="grid grid-cols-3 gap-3">
+                              <LabeledNumber label="Badge · Level Indent (px)" value={cfg.levelBadgeIndent ?? 0} onChange={n=>update('levelBadgeIndent', n)} />
+                              <LabeledNumber label="Badge · Age Indent (px)" value={cfg.ageBadgeIndent ?? 0} onChange={n=>update('ageBadgeIndent', n)} />
+                              <LabeledNumber label="Activity Indent (px)" value={cfg.activityIndent ?? 8} onChange={n=>update('activityIndent', n)} />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

@@ -8,7 +8,8 @@
 
 import { loadAllCategoriesIndependently, loadCategoryData } from "./lib/data-parser"
 import { loadCategoryRecord, saveCategoryRecord, createEmptyCategoryRecord } from "./lib/storage-category"
-import { generateGraphDataFromPlayData, calculateCategoryDevelopmentalAgeFromRecord } from "./lib/storage-core"
+import { calculateCategoryDevelopmentalAgeFromRecord } from "./lib/storage-core"
+import { generateGraphDataFromPlayData } from "./lib/storage-category"
 import type { PlayCategory, AvailablePlayList, GraphDataEntry } from "./lib/types"
 
 // Chart.js v4: 필요한 구성요소만 import 후 register
@@ -76,7 +77,6 @@ interface CategoryRecord {
   graphData: GraphDataEntry[]
   maxLevels: [number, number, number] // max1, max2, max3
   categoryDevelopmentalAge: number
-  topAchievements: { developmentAge: number }[]
 }
 
 interface PlayData {
@@ -832,13 +832,10 @@ function setupEventListeners() {
         appState.developmentalAges[category] = [0, 0, 0]
       }
 
-      // 최고치 3개를 메인 시스템 형식으로 변환
-      const top3Ages = categoryRecord.topAchievements.map((achievement) => achievement.developmentAge)
-      while (top3Ages.length < 3) top3Ages.push(0)
-      appState.developmentalAges[category] = top3Ages
+      // 카테고리 발달 나이를 3개 슬롯에 복사 (레거시 호환)
+      appState.developmentalAges[category] = [categoryAge, categoryAge, categoryAge]
 
-      console.log(`[v0] SYNC_UPDATE: Updated ONLY ${category} developmental ages: [${top3Ages.join(", ")}]`)
-      console.log(`[v0] SYNC_UPDATE: ${category} developmental age: ${categoryAge}`)
+      console.log(`[v0] SYNC_UPDATE: Updated ONLY ${category} developmental age: ${categoryAge}`)
 
       // UI 즉시 업데이트
       updateChildInfoDisplay()

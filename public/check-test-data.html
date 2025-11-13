@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Data Checker</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .category { margin: 20px 0; border: 1px solid #ccc; padding: 10px; }
+        .section { margin: 10px 0; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Test Data Checker</h1>
+    <button onclick="checkData()">Check localStorage Data</button>
+    <div id="output"></div>
+
+    <script>
+        function checkData() {
+            const output = document.getElementById('output');
+            output.innerHTML = '';
+
+            // Get all keys
+            const keys = Object.keys(localStorage).filter(k => k.startsWith('komensky_category_record_'));
+            
+            console.log('Found categories:', keys.length);
+
+            keys.forEach(key => {
+                const categoryName = key.replace('komensky_category_record_', '');
+                const data = localStorage.getItem(key);
+                
+                if (!data) return;
+
+                try {
+                    const record = JSON.parse(data);
+                    
+                    const div = document.createElement('div');
+                    div.className = 'category';
+                    
+                    let html = `<h2>${categoryName}</h2>`;
+                    html += `<div class="section"><strong>PlayData entries:</strong> ${record.playData?.length || 0}</div>`;
+                    html += `<div class="section"><strong>GraphData entries:</strong> ${record.graphData?.length || 0}</div>`;
+                    html += `<div class="section"><strong>Category Development Age:</strong> ${record.categoryDevelopmentalAge?.toFixed(2) || 'N/A'}</div>`;
+                    
+                    // Show first 3 graphData entries
+                    if (record.graphData && record.graphData.length > 0) {
+                        html += '<div class="section"><strong>First 3 GraphData entries:</strong>';
+                        html += '<pre>' + JSON.stringify(record.graphData.slice(0, 3), null, 2) + '</pre>';
+                        html += '</div>';
+                    }
+                    
+                    // Show first 3 playData entries
+                    if (record.playData && record.playData.length > 0) {
+                        html += '<div class="section"><strong>First 3 PlayData entries:</strong>';
+                        const playDataSample = record.playData.slice(0, 3).map(pd => ({
+                            playNumber: pd.playNumber,
+                            playTitle: pd.playTitle,
+                            achievedLevelFlags: pd.achievedLevelFlags,
+                            achievedDates: pd.achievedDates
+                        }));
+                        html += '<pre>' + JSON.stringify(playDataSample, null, 2) + '</pre>';
+                        html += '</div>';
+                    }
+                    
+                    div.innerHTML = html;
+                    output.appendChild(div);
+                    
+                } catch (e) {
+                    console.error('Error parsing', key, e);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

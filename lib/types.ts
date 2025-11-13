@@ -78,7 +78,6 @@ export interface CategoryRecord {
     achievedDates: [Date?, Date?, Date?, Date?, Date?] // level 1-5
   }[]
   graphData: GraphDataEntry[]
-  topAchievements: TopAchievement[] // 최고치 3개 (MaxLevels, PlayNumber, HighestLevelOfTheMax 포함)
   categoryDevelopmentalAge: number
 }
 

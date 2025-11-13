@@ -109,12 +109,3 @@ export function calculateBiologicalAge(birthDate: Date, refDate: Date = new Date
  * - page.tsx / storage-core.ts 등에서 import 기대
  * - TopAchievement.developmentAge 기준 상위 3개 평균
  */
-// Component: calculateCategoryDevelopmentalAgeFromTopAchievements — entry point
-export function calculateCategoryDevelopmentalAgeFromTopAchievements(
-  top: TopAchievement[],
-): number {
-  if (!Array.isArray(top) || top.length === 0) return 0
-  const top3 = [...top].sort((a, b) => b.developmentAge - a.developmentAge).slice(0, 3)
-  const avg = top3.reduce((s, t) => s + t.developmentAge, 0) / top3.length
-  return Number(avg.toFixed(2))
-}
