@@ -6,7 +6,7 @@
 // ---------------------------------------------------------
 
 
-import { loadAllCategoriesIndependently, loadCategoryData } from "./lib/data-parser"
+import { parsePlayData } from "./lib/data-parser"
 import { loadCategoryRecord, saveCategoryRecord, createEmptyCategoryRecord } from "./lib/storage-category"
 import { calculateCategoryDevelopmentalAgeFromRecord } from "./lib/storage-core"
 import { generateGraphDataFromPlayData } from "./lib/storage-category"
@@ -242,52 +242,40 @@ async function initializeApp() {
     console.log(`[v0] INITIALIZATION: Starting app initialization`)
 
     if (!appState.activitiesLoaded) {
-      console.log(`[v0] CATEGORY_INDEPENDENCE: Loading all category data independently`)
-      await loadAllCategoriesIndependently()
-      appState.activitiesLoaded = true
-      console.log(`[v0] CATEGORY_INDEPENDENCE: All categories loaded successfully`)
-    } else {
-      console.log(`[v0] CATEGORY_INDEPENDENCE: Activities already loaded, skipping data parsing`)
-    }
-
-    
-    // [PATCH v1] Ensure appState.activities is populated for legacy detail rendering
-    try {
-      const needActivities = !appState.activities || appState.activities.length === 0;
-      if (needActivities) {
-        const categoriesData = await loadAllCategoriesIndependently();
-        const built: Activity[] = [];
-        Object.entries(categoriesData).forEach(([categoryName, acts]) => {
-          (acts as any[]).forEach((a: any) => {
-            const number = Number(a.number ?? a.playNumber ?? a.num ?? a.playNo ?? 0);
-            const startAge = Number(a.minAge ?? a.startAge ?? a.min ?? 0);
-            const endAge = Number(a.maxAge ?? a.endAge ?? a.max ?? startAge);
-            const titleKr = (a.titleKr ?? a.title ?? a.playTitle ?? "").toString();
-            built.push({
-              id: `${categoryName}-${number}`,
-              category: categoryName,
-              number,
-              titleKr,
-              ageRange: `${startAge}~${endAge}`,
-              startAge,
-              endAge,
-            });
+      // Fetch and parse play_data.txt for available play list
+      const response = await fetch('/play_data.txt');
+      if (!response.ok) throw new Error('Failed to load play_data.txt');
+      const rawData = await response.text();
+      const categoriesData = parsePlayData(rawData);
+      const built: Activity[] = [];
+      Object.entries(categoriesData).forEach(([categoryName, acts]) => {
+        (acts as any[]).forEach((a: any) => {
+          const number = Number(a.number ?? a.playNumber ?? a.num ?? a.playNo ?? 0);
+          const startAge = Number(a.minAge ?? a.startAge ?? a.min ?? 0);
+          const endAge = Number(a.maxAge ?? a.endAge ?? a.max ?? startAge);
+          const titleKr = (a.titleKr ?? a.title ?? a.playTitle ?? '').toString();
+          built.push({
+            id: `${categoryName}-${number}`,
+            category: categoryName,
+            number,
+            titleKr,
+            ageRange: `${startAge}~${endAge}`,
+            startAge,
+            endAge,
           });
         });
-        appState.activities = built;
-        appState.activitiesLoaded = true;
-        try { console.log('[PATCH] appState.activities populated:', appState.activities.length); } catch {}
-        try { (window as any).__activities = built; } catch {}
-      } else {
-        try { console.log('[PATCH] appState.activities already present:', appState.activities.length); } catch {}
-      }
-    } catch (e) {
-      try { console.warn('[PATCH] failed to populate activities', e); } catch {}
+      });
+      appState.activities = built;
+      appState.activitiesLoaded = true;
+      try { console.log('[REVERT] appState.activities populated from play_data.txt:', appState.activities.length); } catch {}
+      try { (window as any).__activities = built; } catch {}
+    } else {
+      try { console.log('[REVERT] appState.activities already present:', appState.activities.length); } catch {}
     }
 
-console.log(`[v0] CATEGORY_RECORD: Checking CategoryRecords for all categories`)
+    // CategoryRecords logic remains unchanged
+    console.log(`[v0] CATEGORY_RECORD: Checking CategoryRecords for all categories`)
     let needsRecordCreation = false
-
     for (const category of PLAY_CATEGORIES) {
       const existingRecord = loadCategoryRecord(category)
       if (!existingRecord || !existingRecord.graphData || existingRecord.graphData.length === 0) {
@@ -300,50 +288,40 @@ console.log(`[v0] CATEGORY_RECORD: Checking CategoryRecords for all categories`)
         )
       }
     }
-
     if (needsRecordCreation) {
       console.log(`[v0] CATEGORY_RECORD: Creating missing CategoryRecords and GraphData`)
-      const categoriesData = await loadAllCategoriesIndependently()
-
-      Object.entries(categoriesData).forEach(([categoryName, activities]) => {
-        const category = categoryName as PlayCategory
-
-        console.log(`[v0] CATEGORY_RECORD: Creating new CategoryRecord for ${category}`)
-        const categoryRecord = createEmptyCategoryRecord(category)
-
-        // Initialize provided_playList with activities
-        categoryRecord.provided_playList = activities
-
-        // Initialize PlayData with proper structure matching lib/types.ts
-        categoryRecord.playData = activities// List render — each item must have stable key
-.map((activity) => ({
+      // Use the already loaded categoriesData from play_data.txt
+      const categoriesData: Record<string, import("./lib/types").AvailablePlayList[]> = {};
+      appState.activities.forEach((a) => {
+        if (!categoriesData[a.category]) categoriesData[a.category] = [];
+        categoriesData[a.category].push({
+          number: a.number,
+          title: a.titleKr,
+          ageRange: a.ageRange,
+          category: a.category,
+          minAge: a.startAge,
+          maxAge: a.endAge,
+        });
+      });
+      Object.entries(categoriesData).forEach(([categoryName, acts]) => {
+        const category = categoryName as PlayCategory;
+        const activities = acts as import("./lib/types").AvailablePlayList[];
+        console.log(`[v0] CATEGORY_RECORD: Creating new CategoryRecord for ${category}`);
+        const categoryRecord = createEmptyCategoryRecord(category);
+        categoryRecord.provided_playList = activities;
+        categoryRecord.playData = activities.map((activity) => ({
           playNumber: activity.number,
           playTitle: activity.title,
           minAge: activity.minAge,
           maxAge: activity.maxAge,
           achievedLevelFlags: [false, false, false, false, false],
           achievedDates: [undefined, undefined, undefined, undefined, undefined],
-        }))
-
-        console.log(
-          `[v0] CATEGORY_RECORD: Initialized ${categoryRecord.playData.length} PlayData entries for ${category}`,
-        )
-
-        // Generate GraphData from PlayData (even if empty, creates baseline)
-        categoryRecord.graphData = generateGraphDataFromPlayData(categoryRecord)
-        console.log(
-          `[v0] CATEGORY_RECORD: Generated ${categoryRecord.graphData.length} GraphData entries for ${category}`,
-        )
-
-        // Calculate and save developmental age
-        categoryRecord.categoryDevelopmentalAge = calculateCategoryDevelopmentalAgeFromRecord(categoryRecord)
-        console.log(`[v0] CATEGORY_RECORD: ${category} developmental age: ${categoryRecord.categoryDevelopmentalAge}`)
-
-        // Save the CategoryRecord with GraphData
-        saveCategoryRecord(categoryRecord)
-        console.log(`[v0] CATEGORY_RECORD: Saved CategoryRecord for ${category}`)
-      })
-
+        }));
+        categoryRecord.graphData = generateGraphDataFromPlayData(categoryRecord);
+        categoryRecord.categoryDevelopmentalAge = calculateCategoryDevelopmentalAgeFromRecord(categoryRecord);
+        saveCategoryRecord(categoryRecord);
+        console.log(`[v0] CATEGORY_RECORD: Saved CategoryRecord for ${category}`);
+      });
       console.log(`[v0] CATEGORY_RECORD: All CategoryRecords created and saved with GraphData`)
     } else {
       console.log(`[v0] CATEGORY_RECORD: All CategoryRecords already exist, no creation needed`)
@@ -370,28 +348,7 @@ function startApp() {
 }
 
 // --- Data Parsing ---
-async function loadSingleCategoryData(targetCategory: string): Promise<Activity[]> {
-  console.log(`[v0] CATEGORY_INDEPENDENCE: Loading ONLY ${targetCategory} data from separate file`)
-
-  try {
-    const activities = await loadCategoryData(targetCategory as PlayCategory)
-
-    // Convert PlayActivity[] to Activity[] format for compatibility
-    return activities// List render — each item must have stable key
-.map((activity) => ({
-      id: `${targetCategory}-${activity.number}`,
-      category: targetCategory,
-      number: activity.number,
-      titleKr: activity.title,
-      ageRange: activity.ageRange,
-      startAge: activity.minAge,
-      endAge: activity.maxAge,
-    }))
-  } catch (error) {
-    console.error(`Failed to load ${targetCategory} data:`, error)
-    return []
-  }
-}
+// No longer needed: all activities are loaded from play_data.txt at app init.
 
 // --- UI Rendering ---
 function renderCategoryTabs() {

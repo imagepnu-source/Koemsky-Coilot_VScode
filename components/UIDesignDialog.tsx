@@ -94,8 +94,19 @@ export default function UIDesignDialog() {
     document.body.style.userSelect = 'none';
   };
   // --- END ADD ---
-  React.useEffect(() => { applyUIDesignCSS(cfg); }, [cfg]);
-  const persist = () => saveUIDesignCfg(cfg);
+  React.useEffect(() => {
+    applyUIDesignCSS(cfg);
+    if (typeof window !== 'undefined') {
+      saveUIDesignCfg(cfg);
+      window.dispatchEvent(new Event('ui-design-updated'));
+    }
+  }, [cfg]);
+  const persist = () => {
+    saveUIDesignCfg(cfg);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('ui-design-updated'));
+    }
+  };
 
   return (
     <>
@@ -114,7 +125,7 @@ export default function UIDesignDialog() {
           aria-modal="true"
           className="fixed inset-0 z-[9999]"
         >
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-transparent" onClick={() => setOpen(false)} />
 
           <div
             className="relative z-10 rounded-xl bg-white shadow-2xl border"

@@ -2,7 +2,7 @@
 (function() {
   console.log("=== 카테고리별 발달 나이 계산 검증 ===\n");
   
-  const categories = ["대근육", "소근육", "인지", "언어", "사회정서", "자조"];
+  const categories = ["대근육", "소근육", "인지", "언어", "사회 정서", "자조"];
   
   categories.forEach(category => {
     const key = `komensky_category_${category}`;

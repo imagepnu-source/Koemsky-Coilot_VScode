@@ -7,7 +7,7 @@
 import type { PlayRecord, CategoryRecord, PlayCategory, GraphDataEntry } from "./types"
 import { getCategoryStorageKey } from "./storage-core"
 import { loadChildProfile } from "./storage-core"
-import { loadCategoryDataSync } from "./data-parser"
+// import { loadCategoryDataSync } from "./data-parser"
 import { CalculateDevAgeFromPlayData, computeAchieveMonthOfThePlay } from "@/lib/development-calculator"
 import { calculateCategoryDevelopmentalAgeFromRecord } from "@/lib/storage-core"
 
@@ -50,20 +50,10 @@ export function loadCategoryRecord(categoryName: PlayCategory): CategoryRecord |
       `[v0] DEBUG: Loading ${categoryName} - provided_playList length: ${record.provided_playList?.length || 0}`,
     )
 
+    // No longer auto-load from detail files. If provided_playList is empty, leave as is.
     if (!record.provided_playList || record.provided_playList.length === 0) {
-      console.log(`[v0] provided_playList is empty for ${categoryName}, loading from source data...`)
-      const sourceData = loadCategoryDataSync(categoryName)
-
-      if (sourceData && sourceData.length > 0) {
-        record.provided_playList = sourceData
-        console.log(`[v0] Successfully loaded ${sourceData.length} activities from source for ${categoryName}`)
-
-        // 자동 로드 후 저장
-        saveCategoryRecord(record)
-      } else {
-        console.error(`[v0] Failed to load source data for ${categoryName} - please generate test data`)
-        return record
-      }
+      console.log(`[v0] provided_playList is empty for ${categoryName}, skipping auto-load (detail file logic removed)`)
+      // Optionally, could load from play_data.txt at a higher level and inject here.
     }
 
     if (record.provided_playList && record.provided_playList.length > 0) {

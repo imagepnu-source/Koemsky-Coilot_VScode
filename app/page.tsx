@@ -10,7 +10,7 @@
 import HideDocScrollbar from "@/components/HideDocScrollbar"
 import { useState, useEffect, useMemo } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { loadAllCategoriesIndependently } from "@/lib/data-parser"
+import { parsePlayData } from "@/lib/data-parser"
 import { loadChildProfile, loadLastSelectedTab, saveLastSelectedTab } from "@/lib/storage-core"
 import { calculateBiologicalAge } from "@/lib/development-calculator"
 import { calculateCategoryDevelopmentalAgeFromRecord } from "@/lib/storage-core"
@@ -27,7 +27,8 @@ import { ChildProfileDialog } from "@/components/child-profile-dialog"
 import { GraphTabs } from "@/components/graph-tabs"
 import { UISettingsProvider } from "@/components/context/UISettingsContext"
 import  UIDesignDialog  from "@/components/UIDesignDialog";
-import { useUISettings } from '@/components/context/UISettingsContext';
+
+import { loadUIDesignCfg, applyUIDesignCSS } from '@/lib/ui-design';
 
 
 // --- PATCH: local handler to fix TS2552 ---
@@ -82,31 +83,56 @@ useEffect(() => {
   const [playData, setPlayData] = useState<Record<PlayCategory, any[]>>({} as any)
   const [scrollPositions, setScrollPositions] = useState<Record<PlayCategory, number>>({} as any)
   const [categoryDevelopmentAges, setCategoryDevelopmentAges] = useState<Record<PlayCategory, number>>({} as any)
-  const { settings } = useUISettings();
-  const af = settings.activityFont;
+
+  // Load full UI design config (AllCfg) from localStorage
+  const [uiDesign, setUIDesign] = useState(() => (typeof window !== 'undefined' ? loadUIDesignCfg() : undefined));
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const cfg = loadUIDesignCfg();
+      setUIDesign(cfg);
+      applyUIDesignCSS(cfg);
+      // Listen for design updates
+      const handler = () => {
+        const newCfg = loadUIDesignCfg();
+        setUIDesign(newCfg);
+        applyUIDesignCSS(newCfg);
+      };
+      window.addEventListener('ui-design-updated', handler);
+      return () => window.removeEventListener('ui-design-updated', handler);
+    }
+  }, []);
 
   useEffect(() => {
     const initializeApp = async () => {
-      await loadAllCategoriesIndependently()
-      initializeGlobalCategories()
+      // Load play_data.txt and parse
+      try {
+        const res = await fetch("/play_data.txt");
+        const text = await res.text();
+        const parsed = parsePlayData(text);
+        setPlayData(parsed as Record<PlayCategory, any[]>);
+      } catch (e) {
+        console.error("Failed to load play_data.txt", e);
+      }
+      initializeGlobalCategories();
 
-      const profile = loadChildProfile()
+      const profile = loadChildProfile();
       if (!profile) {
-        setShowProfileDialog(true)
+        setShowProfileDialog(true);
       } else {
-        setChildProfile(profile)
+        setChildProfile(profile);
       }
 
-      const lastTab = loadLastSelectedTab()
-      const categories = getPlayCategories()
+      const lastTab = loadLastSelectedTab();
+      const categories = getPlayCategories();
       if (categories.includes(lastTab)) {
-        setSelectedTab(lastTab as PlayCategory)
+        setSelectedTab(lastTab as PlayCategory);
       }
-    }
+    };
 
-    initializeApp()
+    initializeApp();
 
-    const handleCategoryRecalculation = (event: CustomEvent<{ category: PlayCategory }>) => {
+    const handleCategoryRecalculation = (event: CustomEvent) => {
       const targetCategory = event.detail.category
       try {
         const record = loadCategoryRecord(targetCategory)
@@ -116,42 +142,6 @@ useEffect(() => {
           ...prev,
           [targetCategory]: Math.round(categoryAge * 100) / 100,
         }))
-        
-        // Update playData to reflect new achievedLevelFlags
-        setPlayData((prevData) => {
-          const categoryActivities = prevData[targetCategory]
-          if (!categoryActivities) return prevData
-          
-          // CategoryRecord의 playData에 있는 playNumber 목록
-          const activePlayNumbers = new Set(record?.playData.map(pd => pd.playNumber) ?? [])
-          
-          const updatedActivities = categoryActivities.map((activity: any) => {
-            const playNumber = activity.number ?? activity.playNumber
-            const playDataEntry = record?.playData.find(pd => pd.playNumber === playNumber)
-            
-            // playData에서 삭제된 항목은 achievedLevelFlags를 모두 false로 초기화
-            if (!playDataEntry) {
-              return {
-                ...activity,
-                achievedLevelFlags: [false, false, false, false, false],
-                achievedDates: [undefined, undefined, undefined, undefined, undefined]
-              }
-            }
-            
-            return {
-              ...activity,
-              achievedLevelFlags: playDataEntry.achievedLevelFlags,
-              achievedDates: playDataEntry.achievedDates
-            }
-          })
-          
-          console.log(`[v0] Updated playData for ${targetCategory}: ${updatedActivities.length} activities, ${activePlayNumbers.size} with achievements`)
-          
-          return {
-            ...prevData,
-            [targetCategory]: updatedActivities
-          }
-        })
       } catch (error) {
         console.error(`Failed to load achievements for ${targetCategory}:`, error)
         setCategoryDevelopmentAges((prev) => ({
@@ -165,47 +155,34 @@ useEffect(() => {
 
     let isDataLoaded = false
     const loadPlayDataFromFiles = async () => {
-      if (isDataLoaded) return
+      if (isDataLoaded) return;
       try {
-        const categoriesData = await loadAllCategoriesIndependently()
-        const convertedData: Record<PlayCategory, any[]> = {} as any
-        Object.entries(categoriesData).forEach(([category, activities]) => {
-          // Merge with CategoryRecord playData to get achievedLevelFlags
-          const record = loadCategoryRecord(category as PlayCategory)
-          const mergedActivities = activities.map((activity: any) => {
-            const playNumber = activity.number ?? activity.playNumber
-            const playDataEntry = record?.playData.find(pd => pd.playNumber === playNumber)
-            return {
-              ...activity,
-              achievedLevelFlags: playDataEntry?.achievedLevelFlags ?? [false, false, false, false, false],
-              achievedDates: playDataEntry?.achievedDates ?? [undefined, undefined, undefined, undefined, undefined]
-            }
-          })
-          convertedData[category as PlayCategory] = mergedActivities
-        })
-        setPlayData(convertedData)
+        const res = await fetch("/play_data.txt");
+        const text = await res.text();
+        const parsed = parsePlayData(text);
+        setPlayData(parsed as Record<PlayCategory, any[]>);
 
-        const initialCategoryAges: Record<PlayCategory, number> = {} as any
-        const categories = getPlayCategories()
+        const initialCategoryAges: Record<PlayCategory, number> = {} as any;
+        const categories = getPlayCategories();
         for (const category of categories) {
           try {
-            const record = loadCategoryRecord(category)
+            const record = loadCategoryRecord(category);
             const categoryAge =
-              record ? calculateCategoryDevelopmentalAgeFromRecord(record) : 0
-            initialCategoryAges[category] = Math.round(categoryAge * 100) / 100
+              record ? calculateCategoryDevelopmentalAgeFromRecord(record) : 0;
+            initialCategoryAges[category] = Math.round(categoryAge * 100) / 100;
           } catch (error) {
-            console.error(`Failed to load initial category ${category}:`, error)
-            initialCategoryAges[category] = 0
+            console.error(`Failed to load initial category ${category}:`, error);
+            initialCategoryAges[category] = 0;
           }
         }
-        setCategoryDevelopmentAges(initialCategoryAges)
-        isDataLoaded = true
+        setCategoryDevelopmentAges(initialCategoryAges);
+        isDataLoaded = true;
       } catch (error) {
-        console.error("Failed to load play data:", error)
+        console.error("Failed to load play data:", error);
       }
-    }
+    };
 
-    loadPlayDataFromFiles()
+    loadPlayDataFromFiles();
 
     return () => {
       window.removeEventListener("recalculateCategory", handleCategoryRecalculation as EventListener)
@@ -336,33 +313,41 @@ useEffect(() => {
     return (
       <UISettingsProvider>
         <HideDocScrollbar />
-        <div className="fixed top-4 left-4 z-50">
-          <UIDesignDialog />
-        </div>
+        {/* UIDesignDialog는 헤더 내부로 이동 */}
       </UISettingsProvider>
     )
   }
+
 
   return (
     <UISettingsProvider>
       <div className="min-h-screen bg-background">
         {/* 헤더 */}
-        <div data-ui="top-header" style={{
-          backgroundColor: 'var(--kp-top-header-bg, #FFFFFF)',
-          padding: 'var(--kp-top-header-padding, 12px)',
-          borderWidth: 'var(--kp-top-header-border-width, 1px)',
-          borderColor: 'var(--kp-top-header-border-color, rgba(0,0,0,0.12))',
-          borderStyle: 'solid'
-        }}>
+        <div
+          data-ui="top-header"
+          style={{
+            background: uiDesign?.topHeaderBox?.bg,
+            borderWidth: uiDesign?.topHeaderBox?.border?.width,
+            borderColor: uiDesign?.topHeaderBox?.border?.color,
+            borderStyle: 'solid',
+            padding: uiDesign?.topHeaderBox?.padding ? `${uiDesign.topHeaderBox.padding}px` : undefined,
+          }}
+        >
           <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+            {/* 왼쪽: UIDesignDialog 버튼 */}
             <div className="justify-self-start">
               <UIDesignDialog />
             </div>
-            <h2 data-ui="title" className="justify-self-center" style={{
-              fontSize: 'var(--kp-title-size, 18px)',
-              fontWeight: 'var(--kp-title-weight, 700)',
-              color: 'var(--kp-title-color, #111111)'
-            }}> 
+            <h2
+              data-ui="title"
+              className="justify-self-center"
+              style={{
+                fontSize: uiDesign?.title?.size ? `${uiDesign.title.size}px` : undefined,
+                fontWeight: uiDesign?.title?.bold ? 700 : 400,
+                color: uiDesign?.title?.color,
+                fontFamily: uiDesign?.title?.family,
+              }}
+            >
               Komensky Play (V1.94C)
             </h2>
             <button
@@ -377,29 +362,41 @@ useEffect(() => {
           </div>
 
           <div className="mt-2 grid grid-cols-[1fr_auto_auto_auto] items-center gap-3">
-            <div data-ui="namebio" className="text-center" style={{
-              fontSize: 'var(--kp-namebio-size, 13px)',
-              fontWeight: 'var(--kp-namebio-weight, 400)',
-              color: 'var(--kp-namebio-color, #444444)'
-            }}>
+            <div
+              data-ui="namebio"
+              className="text-center"
+              style={{
+                fontSize: uiDesign?.namebio?.size ? `${uiDesign.namebio.size}px` : undefined,
+                fontWeight: uiDesign?.namebio?.bold ? 700 : 400,
+                color: uiDesign?.namebio?.color,
+                fontFamily: uiDesign?.namebio?.family,
+              }}
+            >
               {(childProfile?.name ?? "아이")} 나이: {biologicalAge.toFixed(2)}개월
             </div>
           </div>
 
           <div className="mt-2 grid grid-cols-[1fr_auto_auto] items-center gap-3">
-            <div data-ui="devage" style={{
-              fontSize: 'var(--kp-devage-size, 14px)',
-              fontWeight: 'var(--kp-devage-weight, 700)',
-              color: 'var(--kp-devage-color, #0A66FF)'
-            }}>
+            <div
+              data-ui="devage"
+              style={{
+                fontSize: uiDesign?.devage?.size ? `${uiDesign.devage.size}px` : undefined,
+                fontWeight: uiDesign?.devage?.bold ? 700 : 400,
+                color: uiDesign?.devage?.color,
+                fontFamily: uiDesign?.devage?.family,
+              }}
+            >
               발달 나이: {overallDevelopmentAge.toFixed(2)}개월
             </div>
-            <div data-ui="catag" style={{
-              fontSize: 'var(--kp-catag-size, 12px)',
-              fontWeight: 'var(--kp-catag-weight, 700)',
-              color: 'var(--kp-catag-color, inherit)'
-            }}>
-              {selectedTab !== "그래프" ? `${selectedTab.split(',')[0].trim()} 나이: ${currentCategoryAge.toFixed(2)}개월` : " "}
+            <div
+              data-ui="catag"
+              style={{
+                fontSize: uiDesign?.catag?.size ? `${uiDesign.catag.size}px` : undefined,
+                fontWeight: uiDesign?.catag?.bold ? 700 : 400,
+                color: uiDesign?.catag?.color,
+              }}
+            >
+              {selectedTab !== "그래프" ? `${selectedTab} 나이: ${currentCategoryAge.toFixed(2)}개월` : " "}
             </div>
             <div>
               <Select value={selectedTab} onValueChange={handleTabChange}>
@@ -407,14 +404,11 @@ useEffect(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {getPlayCategories().map((category) => {
-                    const displayName = category.split(',')[0].trim();
-                    return (
-                      <SelectItem key={category} value={category}>
-                        <span style={{ color: categoryColors[category] }}>{displayName}</span>
-                      </SelectItem>
-                    );
-                  })}
+                  {getPlayCategories().map((category) => (
+                    <SelectItem key={category} value={category}>
+                      <span style={{ color: categoryColors[category] }}>{category}</span>
+                    </SelectItem>
+                  ))}
                   <SelectItem value="그래프">그래프</SelectItem>
                 </SelectContent>
               </Select>
@@ -435,83 +429,65 @@ useEffect(() => {
                     onBack={handleBackToList}
                     onNavigate={handlePlayNavigate}
                     totalPlays={playData?.[category]?.length || 25}
+                    uiDesign={uiDesign}
+                    activity={(() => {
+                      const found = (playData?.[category] || []).find((a: any) => {
+                        const num = a.playNumber ?? a.num ?? a.number;
+                        return num === selectedPlay.number;
+                      });
+                      if (found) return found;
+                      // fallback: minimal object to prevent null
+                      return {
+                        number: selectedPlay.number,
+                        title: '',
+                        ageRange: '',
+                        minAge: 0,
+                        maxAge: 0,
+                        category,
+                      };
+                    })()}
                   />
                 ) : (
                   <div className="max-h-[calc(100vh-200px)] overflow-y-auto" data-category={category}>
                     {/* ✅ PlayListPanel이 요구하는 items 형태로 변환해서 전달 */}
                     <PlayListPanel
                       items={(playData?.[category] || []).map((a: any) => {
-const num = a.playNumber ?? a.num ?? a.number;
-const minAge = (a.minAge ?? a.min ?? 0) as number;
-const maxAge = (a.maxAge ?? a.max ?? a.minAge ?? a.min ?? 0) as number;
+                        const num = a.playNumber ?? a.num ?? a.number;
+                        const minAge = (a.minAge ?? a.min ?? 0) as number;
+                        const maxAge = (a.maxAge ?? a.max ?? a.minAge ?? a.min ?? 0) as number;
 
-// 1) Consolidate achievement signals from arrays/fields/dates
-const flagsFromArray = Array.isArray(a.achievedLevelFlags)
-  ? a.achievedLevelFlags
-  : Array.isArray(a.achievedDates)
-    ? a.achievedDates.map((d: any) => !!d)
-    : Array.isArray(a.achievedDate)
-      ? a.achievedDate.map((d: any) => !!d)
-      : undefined;
+                        // CategoryRecord에서 달성 정보 가져오기
+                        let highestLevel = 0;
+                        try {
+                          // 최신 달성 정보는 localStorage에 저장된 CategoryRecord에서 가져옴
+                          const { loadCategoryRecord } = require("@/lib/storage-category");
+                          const rec = loadCategoryRecord(category);
+                          if (rec && Array.isArray(rec.playData)) {
+                            const pd = rec.playData.find((p: any) => p.playNumber === num);
+                            if (pd && Array.isArray(pd.achievedLevelFlags)) {
+                              for (let i = pd.achievedLevelFlags.length; i >= 1; i--) {
+                                if (pd.achievedLevelFlags[i - 1]) { highestLevel = i; break; }
+                              }
+                            }
+                          }
+                        } catch (e) { /* ignore */ }
 
-// Treat levelN true/1 OR dateN present as achieved
-const flagsFromFields = [
-  (a.level1 === 1 || a.level1 === true) || !!a.date1,
-  (a.level2 === 1 || a.level2 === true) || !!a.date2,
-  (a.level3 === 1 || a.level3 === true) || !!a.date3,
-  (a.level4 === 1 || a.level4 === true) || !!a.date4,
-  (a.level5 === 1 || a.level5 === true) || !!a.date5,
-];
+                        let levelColorClass = "level-color-0";
+                        if (highestLevel >= 4) levelColorClass = "level-color-4-5";
+                        else if (highestLevel === 3) levelColorClass = "level-color-3";
+                        else if (highestLevel >= 1) levelColorClass = "level-color-1-2";
 
-const rawFlags = flagsFromArray ?? flagsFromFields;
-const flags: boolean[] = Array.isArray(rawFlags)
-  ? rawFlags.slice(0, 5).map((v: any) => v === true || v === 1 || v === "1")
-  : [false, false, false, false, false];
-
-// 2) Highest: hint first, else 5->1 from flags
-let highestLevel = 0;
-const hinted =
-  (typeof a.achievedLevel_Highest === "number" && a.achievedLevel_Highest >= 0 && a.achievedLevel_Highest <= 5)
-    ? a.achievedLevel_Highest
-    : undefined;
-
-if (typeof hinted === "number") {
-  highestLevel = hinted;
-} else {
-  for (let i = flags.length; i >= 1; i--) {
-    if (flags[i - 1]) { highestLevel = i; break; }
-  }
-}
-
-// 3) Color class
-let levelColorClass = "level-color-0";
-if (highestLevel >= 4) levelColorClass = "level-color-4-5";
-else if (highestLevel === 3) levelColorClass = "level-color-3";
-else if (highestLevel >= 1) levelColorClass = "level-color-1-2";
-
-// Debug: 첫 번째 항목만 로그 출력
-if (num === 1) {
-  console.log('[AGE DEBUG]', { 
-    num, minAge, maxAge, 
-    raw: { minAge: a.minAge, maxAge: a.maxAge },
-    achievedLevelFlags: a.achievedLevelFlags,
-    achievedDates: a.achievedDates,
-    flags,
-    highestLevel
-  });
-}
-
-return {
-  key: `${category}-${num}`,
-  num,
-  title: a.playTitle ?? a.title,
-  category,
-  minAge,
-  maxAge,
-  highestLevel,
-  levelColorClass,
-};
-})}
+                        return {
+                          key: `${category}-${num}`,
+                          num,
+                          title: a.playTitle ?? a.title,
+                          category,
+                          minAge,
+                          maxAge,
+                          highestLevel,
+                          levelColorClass,
+                        };
+                      })}
                       onPlaySelect={handlePlaySelect}
                     />
                   </div>

@@ -1,0 +1,27 @@
+.hide-scrollbar,
+[data-ui="play-list-panel"] {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+[data-ui="play-list-panel"]::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+[data-ui="play-list-panel"]::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  display: none !important;
+}
+.hide-scrollbar {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.hide-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  display: none !important;
+}

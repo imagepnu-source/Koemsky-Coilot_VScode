@@ -11,7 +11,7 @@ function computeAchieveMonthOfThePlay(minAge, maxAge, level) {
   return Number(v.toFixed(2));
 }
 
-const categories = ["대근육", "소근육", "언어(표현)", "언어(이해)", "인지", "사회정서", "기본생활"];
+const categories = ["대근육", "소근육", "언어(표현)", "언어(이해)", "인지", "사회 정서", "기본생활"];
 
 categories.forEach(category => {
   const key = `komensky_category_record_${category}`;

@@ -1,13 +1,20 @@
+// For TypeScript: declare global window property for play data
+declare global {
+  interface Window {
+    __KOMENSKY_PLAY_DATA__?: Record<string, any[]>;
+  }
+}
 
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { CheckedState } from "@radix-ui/react-checkbox"
 
-import { parseDetailedActivity, loadCategoryData, getEnglishCategoryName } from "@/lib/data-parser"
+import { parseDetailedActivity, getEnglishCategoryName } from "@/lib/data-parser"
+// import { updateCategoryAchievement, removeCategoryAchievement } from "@/lib/category-achievements-manager"
 import { loadCategoryRecord, updateCategoryPlayData } from "@/lib/storage-category"
 import type { PlayCategory, DetailedActivity } from "@/lib/types"
 import { loadUIDesignCfg as _loadUIDesignCfg } from "@/lib/ui-design"
@@ -46,6 +53,17 @@ type TextStyle = {
 }
 type DetailDesign = { panel?: BoxStyle; box?: BoxStyle; title?: TextStyle; body?: TextStyle; }
 type UIDetailCfg = { detail?: DetailDesign }
+// PlayDetailPanelProps에 activity 추가
+import type { AllCfg } from '@/lib/ui-design';
+interface PlayDetailPanelProps {
+  category: PlayCategory;
+  playNumber: number;
+  onBack: () => void;
+  onNavigate?: (newPlayNumber: number) => void;
+  totalPlays?: number;
+  activity?: any;
+  uiDesign?: AllCfg;
+}
 
 // ---- 기본값 & 보정 유틸 ------------------------------------------------------
 const BOX_DEFAULT: Required<BoxStyle> = {
@@ -81,34 +99,7 @@ function fillText(t?: TextStyle, base: Required<TextStyle> = BODY_DEFAULT): Requ
 }
 
 function useDetailDesign(): { panel: Required<BoxStyle>; box: Required<BoxStyle>; title: Required<TextStyle>; body: Required<TextStyle> } {
-  // UI 설정이 변경되면 자동으로 다시 로드
-  const [configVersion, setConfigVersion] = React.useState(0)
-  
-  React.useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'komensky_ui_design_v2') {
-        setConfigVersion(v => v + 1)
-      }
-    }
-    
-    const handleCustomUpdate = () => {
-      setConfigVersion(v => v + 1)
-    }
-    
-    window.addEventListener('storage', handleStorageChange)
-    window.addEventListener('ui-design-updated', handleCustomUpdate)
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange)
-      window.removeEventListener('ui-design-updated', handleCustomUpdate)
-    }
-  }, [])
-  
-  const raw = useMemo<UIDetailCfg>(() => { 
-    try { return (_loadUIDesignCfg?.() ?? {}) as UIDetailCfg } 
-    catch { return {} as UIDetailCfg } 
-  }, [configVersion]) // configVersion이 변경되면 다시 로드
-  
+  const raw = useMemo<UIDetailCfg>(() => { try { return (_loadUIDesignCfg?.() ?? {}) as UIDetailCfg } catch { return {} as UIDetailCfg } }, [])
   const d = raw.detail ?? {}
   return { panel: fillPanel(d.panel), box: fillBox(d.box), title: fillText(d.title, TITLE_DEFAULT), body: fillText(d.body, BODY_DEFAULT) }
 }
@@ -126,28 +117,9 @@ function SectionBox(props: SectionBoxProps) {
   const b = fillBox(props.box); const t = fillText(props.title, TITLE_DEFAULT); const bd = fillText(props.body, BODY_DEFAULT);
   const fwTitle = t.bold ? 700 : 500; const fwBody = bd.bold ? 600 : 400;
   return (
-    <div data-ui="detail-small-box" style={{ 
-      borderWidth: 'var(--kp-detail-box-border-width, ' + b.bw + ')', 
-      borderStyle: "solid", 
-      borderColor: 'var(--kp-detail-box-border-color, ' + b.bc + ')', 
-      background: 'var(--kp-detail-box-bg, ' + b.bg + ')', 
-      borderRadius: 'var(--kp-detail-box-radius, ' + b.radius + ')', 
-      padding: 'var(--kp-detail-box-padding, ' + b.py + ' ' + b.px + ')', 
-      minHeight: b.h || undefined 
-    }}>
-      {props.label ? (<div style={{ 
-        fontSize: 'var(--kp-detail-title-size, ' + t.size + ')', 
-        color: 'var(--kp-detail-title-color, ' + t.color + ')', 
-        fontWeight: 'var(--kp-detail-title-weight, ' + fwTitle + ')', 
-        marginBottom: '6px', // 모든 소제목 다음에 6px 간격
-        marginLeft: 'var(--kp-detail-title-indent, 0px)' // UI에서 제어
-      }}>{props.label}</div>) : null}
-      <div style={{ 
-        fontSize: 'var(--kp-detail-body-size, ' + bd.size + ')', 
-        color: 'var(--kp-detail-body-color, ' + bd.color + ')', 
-        fontWeight: 'var(--kp-detail-body-weight, ' + fwBody + ')',
-        marginLeft: 'var(--kp-detail-body-indent, 10px)' // UI에서 제어
-      }}>{props.children}</div>
+    <div data-ui="detail-small-box" style={{ borderWidth: b.bw, borderStyle: "solid", borderColor: b.bc, background: b.bg, borderRadius: b.radius, padding: `${b.py} ${b.px}`, minHeight: b.h || undefined }}>
+      {props.label ? (<div style={{ fontSize: t.size, color: t.color, fontWeight: fwTitle, marginBottom: 0 }}>{props.label}</div>) : null}
+      <div style={{ fontSize: bd.size, color: bd.color, fontWeight: fwBody }}>{props.children}</div>
     </div>
   );
 }
@@ -167,15 +139,59 @@ const loadCategoryDetails = async (category: string): Promise<string> => {
 // ---- 메인 컴포넌트 ----------------------------------------------------------
 interface PlayDetailPanelProps { category: PlayCategory; playNumber: number; onBack: () => void; onNavigate?: (n: number) => void; totalPlays?: number; }
 
-export default function PlayDetailPanel({ category, playNumber, onBack, onNavigate, totalPlays }: PlayDetailPanelProps) {
+export default function PlayDetailPanel({ category, playNumber, onBack, onNavigate, totalPlays, uiDesign, activity }: PlayDetailPanelProps) {
   const [detailData, setDetailData] = useState<DetailedActivity | null>(null)
-  const [playActivity, setPlayActivity] = useState<PlayActivityLite | null>(null)
   const [completedLevels, setCompletedLevels] = useState<boolean[]>([false,false,false,false,false])
   const [loading, setLoading] = useState(true)
   const [hasFixedDifficulty, setHasFixedDifficulty] = useState(false)
   const [categoryTotalPlays, setCategoryTotalPlays] = useState<number>(totalPlays || 25)
-  const DD = useDetailDesign()
 
+  // Always use the latest activity prop, or fallback to window data if not provided
+  const playActivity: PlayActivityLite | null = useMemo(() => {
+    if (activity) return activity;
+    if (typeof window !== "undefined" && window.__KOMENSKY_PLAY_DATA__?.[category]) {
+      return window.__KOMENSKY_PLAY_DATA__[category].find((a: any) => a.number === playNumber) ?? null;
+    }
+    return null;
+  }, [activity, category, playNumber]);
+  // If uiDesign is provided, use it for design config; otherwise fallback to local loader
+  const DD = useMemo(() => {
+    if (uiDesign) {
+      // Map AllCfg fields to DD
+      return {
+        panel: fillPanel({
+          bg: uiDesign.detailPanelBox?.bg,
+          bw: uiDesign.detailPanelBox?.borderWidth ? `${uiDesign.detailPanelBox.borderWidth}px` : undefined,
+          bc: uiDesign.detailPanelBox?.borderColor,
+          radius: uiDesign.detailPanelBox?.radius ? `${uiDesign.detailPanelBox.radius}px` : undefined,
+          px: '12px',
+          py: '12px',
+        }),
+        box: fillBox({
+          bg: uiDesign.detailSmallBox?.bg,
+          bw: uiDesign.detailSmallBox?.borderWidth ? `${uiDesign.detailSmallBox.borderWidth}px` : undefined,
+          bc: uiDesign.detailSmallBox?.borderColor,
+          radius: uiDesign.detailSmallBox?.radius ? `${uiDesign.detailSmallBox.radius}px` : undefined,
+          px: '10px',
+          py: '10px',
+        }),
+        title: fillText({
+          size: uiDesign.detailTitle?.size ? `${uiDesign.detailTitle.size}px` : undefined,
+          color: uiDesign.detailTitle?.color,
+          bold: uiDesign.detailTitle?.bold,
+        }, TITLE_DEFAULT),
+        body: fillText({
+          size: uiDesign.detailBody?.size ? `${uiDesign.detailBody.size}px` : undefined,
+          color: uiDesign.detailBody?.color,
+          bold: uiDesign.detailBody?.bold,
+        }, BODY_DEFAULT),
+      };
+    }
+    return useDetailDesign();
+  }, [uiDesign]);
+
+  // Debug: log the header box config to verify value at render
+  console.log('[PlayDetailPanel] detailHeaderBox', uiDesign?.detailHeaderBox);
   useEffect(() => {
     let alive = true
     const fx = async () => {
@@ -184,13 +200,6 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
         const parsedDetail = parseDetailedActivity(detailsText, playNumber)
         if (!alive) return
         setDetailData(parsedDetail)
-
-        const categoryActivities: unknown = await loadCategoryData(category)
-        if (!Array.isArray(categoryActivities)) throw new Error(`Category data is not an array: ${typeof categoryActivities}`)
-        if (alive) setCategoryTotalPlays(categoryActivities.length)
-
-        const currentActivity = (categoryActivities as any[]).find(a => a?.number === playNumber) as PlayActivityLite | undefined
-        if (alive) setPlayActivity(currentActivity ?? null)
 
         const categoryRecord = loadCategoryRecord(category)
         if (alive) {
@@ -201,7 +210,6 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
             setCompletedLevels([false,false,false,false,false])
           }
         }
-        if (currentActivity && currentActivity.minAge === currentActivity.maxAge) { if (alive) setHasFixedDifficulty(true) } else { if (alive) setHasFixedDifficulty(false) }
       } catch (e) {
         console.error(`[v0] Failed to load detail data for ${category} #${playNumber}:`, e)
       } finally {
@@ -210,23 +218,38 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
     }
     fx()
     return () => { alive = false }
-  }, [category, playNumber])
+  }, [category, playNumber, activity])
 
   const handleLevelToggle = (levelIndex: number, checked: CheckedState) => {
     if (hasFixedDifficulty && levelIndex !== 2) { alert("이 놀이는 난이도를 조절할 수 없습니다."); return }
     if (checked !== true && checked !== false) return
     const newLevels = [...completedLevels]; newLevels[levelIndex] = checked; setCompletedLevels(newLevels)
     updateCategoryPlayData(category, playNumber, levelIndex, checked)
-    setTimeout(()=>{ window.dispatchEvent(new CustomEvent("recalculateCategory", { detail: { category } })) }, 0)
+    const selected = newLevels.map((v,i)=>v?i+1:null).filter((v): v is number => v!==null)
+    const hi = selected.length? Math.max(...selected) : 0
+    updateAchievements(hi)
+  }
+  const updateAchievements = (achievedLevel: number) => {
+    if (!detailData || !playActivity) return
+    if (achievedLevel > 0) {
+      const act = { category, ...playActivity } as { category: PlayCategory } & PlayActivityLite
+      // updateCategoryAchievement(category, act, achievedLevel, new Date())
+      setTimeout(()=>{ window.dispatchEvent(new CustomEvent("recalculateCategory", { detail: { category } })) }, 0)
+    } else {
+      const rec = loadCategoryRecord(category)
+      // if (rec?.topAchievements) {
+      //   rec.topAchievements.filter((a: any) => a.playNumber === playNumber).forEach(a => {
+      //     removeCategoryAchievement(category, a.playNumber, a.achievedLevel, a.developmentAge)
+      //   })
+      // }
+      setTimeout(()=>{ window.dispatchEvent(new CustomEvent("recalculateCategory", { detail: { category } })) }, 0)
+    }
   }
   const renderTextWithLineBreaks = (text: string) => {
     const t = text ?? ""
+    const bd = DD.body
     return t.split("\n").map((line, idx) => (
-      <div key={idx} style={{ 
-        fontSize: 'var(--kp-detail-body-size, 13px)', 
-        color: 'var(--kp-detail-body-color, #333333)', 
-        fontWeight: 'var(--kp-detail-body-weight, 400)' 
-      }}>
+      <div key={idx} style={{ fontSize: bd.size, color: bd.color, fontWeight: bd.bold ? 600 : 400 }}>
         {line || "\u00A0"}</div>
     ))
   }
@@ -249,7 +272,65 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
 
   const big = DD.panel, small = DD.box, titleText = DD.title, bodyText = DD.body
   const gapBetweenBoxes = small.gap || "10px"
-  const findSection = (names: string[]) => detailData.sections?.find((s: any) => names.some(n => s.title.includes(n)))
+
+  // Move findSection definition here so it's available before use
+  const findSection = (names: string[]) => detailData?.sections?.find((s: any) => names.some(n => s.title.includes(n)));
+
+  // Debug: log the header box config to verify value at render
+  console.log('[PlayDetailPanel] detailHeaderBox', uiDesign?.detailHeaderBox);
+  // UI settings for header
+  const headerBox = uiDesign?.detailHeaderBox ? {
+    background: uiDesign.detailHeaderBox.bg,
+    borderWidth: uiDesign.detailHeaderBox.borderWidth ? `${uiDesign.detailHeaderBox.borderWidth}px` : undefined,
+    borderStyle: uiDesign.detailHeaderBox.borderWidth && uiDesign.detailHeaderBox.borderWidth > 0 ? "solid" : undefined,
+    borderColor: uiDesign.detailHeaderBox.borderColor,
+    borderRadius: uiDesign.detailHeaderBox.radius ? `${uiDesign.detailHeaderBox.radius}px` : undefined,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    marginBottom: "8px"
+  } : {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "8px"
+  };
+  const headerTitle = uiDesign?.detailHeaderTitle ? {
+    fontSize: uiDesign.detailHeaderTitle.size ? `${uiDesign.detailHeaderTitle.size}px` : undefined,
+    color: uiDesign.detailHeaderTitle.color,
+    fontWeight: uiDesign.detailHeaderTitle.bold ? 700 : 500
+  } : { fontWeight: 700 };
+  const headerListBtn = uiDesign?.detailHeaderListBtn ? {
+    fontSize: uiDesign.detailHeaderListBtn.fontSize ? `${uiDesign.detailHeaderListBtn.fontSize}px` : undefined,
+    color: uiDesign.detailHeaderListBtn.color,
+    fontWeight: uiDesign.detailHeaderListBtn.bold ? 700 : 500,
+    background: uiDesign.detailHeaderListBtn.bg,
+    borderWidth: uiDesign.detailHeaderListBtn.borderWidth,
+    borderColor: uiDesign.detailHeaderListBtn.borderColor,
+    borderRadius: uiDesign.detailHeaderListBtn.radius ? `${uiDesign.detailHeaderListBtn.radius}px` : undefined,
+    padding: `${uiDesign.detailHeaderListBtn.paddingY ?? 6}px ${uiDesign.detailHeaderListBtn.paddingX ?? 12}px`,
+    marginRight: "8px"
+  } : { fontWeight: 700 };
+  const headerPrevBtn = uiDesign?.detailHeaderPrevBtn ? {
+    fontSize: uiDesign.detailHeaderPrevBtn.fontSize ? `${uiDesign.detailHeaderPrevBtn.fontSize}px` : undefined,
+    color: uiDesign.detailHeaderPrevBtn.color,
+    fontWeight: uiDesign.detailHeaderPrevBtn.bold ? 700 : 500,
+    background: uiDesign.detailHeaderPrevBtn.bg,
+    borderWidth: uiDesign.detailHeaderPrevBtn.borderWidth,
+    borderColor: uiDesign.detailHeaderPrevBtn.borderColor,
+    borderRadius: uiDesign.detailHeaderPrevBtn.radius ? `${uiDesign.detailHeaderPrevBtn.radius}px` : undefined,
+    padding: `${uiDesign.detailHeaderPrevBtn.paddingY ?? 6}px ${uiDesign.detailHeaderPrevBtn.paddingX ?? 12}px`,
+    marginRight: "4px"
+  } : { fontWeight: 700 };
+  const headerNextBtn = uiDesign?.detailHeaderNextBtn ? {
+    fontSize: uiDesign.detailHeaderNextBtn.fontSize ? `${uiDesign.detailHeaderNextBtn.fontSize}px` : undefined,
+    color: uiDesign.detailHeaderNextBtn.color,
+    fontWeight: uiDesign.detailHeaderNextBtn.bold ? 700 : 500,
+    background: uiDesign.detailHeaderNextBtn.bg,
+    borderWidth: uiDesign.detailHeaderNextBtn.borderWidth,
+    borderColor: uiDesign.detailHeaderNextBtn.borderColor,
+    borderRadius: uiDesign.detailHeaderNextBtn.radius ? `${uiDesign.detailHeaderNextBtn.radius}px` : undefined,
+    padding: `${uiDesign.detailHeaderNextBtn.paddingY ?? 6}px ${uiDesign.detailHeaderNextBtn.paddingX ?? 12}px`,
+    marginLeft: "4px"
+  } : { fontWeight: 700 };
   const prepTimeSection = findSection(["준비시간", "준비 시간"])
   const playTimeSection = findSection(["놀이시간", "놀이 시간"])
   const materialsSection = findSection(["준비물"])
@@ -264,128 +345,32 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
 
   return (
     <div data-ui="detail-panel-container"
-      style={{ 
-        borderWidth: 'var(--kp-detail-panel-border-width, ' + big.bw + ')', 
-        borderStyle: "solid", 
-        borderColor: 'var(--kp-detail-panel-border-color, ' + big.bc + ')', 
-        background: 'var(--kp-detail-panel-bg, ' + big.bg + ')', 
-        borderRadius: 'var(--kp-detail-panel-radius, ' + big.radius + ')', 
-        padding: `${big.py} ${big.px}` 
-      }}
+      style={{ borderWidth: big.bw, borderStyle: "solid", borderColor: big.bc, background: big.bg, borderRadius: big.radius, padding: `${big.py} ${big.px}` }}
       className="space-y-4"
     >
-      {/* Play Detail Header */}
-      <div data-ui="detail-header-container" style={{
-        borderWidth: 'var(--kp-detail-header-border-width, 0px)',
-        borderStyle: "solid",
-        borderColor: 'var(--kp-detail-header-border-color, transparent)',
-        background: 'var(--kp-detail-header-bg, #F9FAFB)',
-        borderRadius: 'var(--kp-detail-header-radius, 8px)',
-        padding: '12px'
-      }}>
-        {/* 제목 + 적정연령 배지 */}
-        <div className="flex items-center justify-center gap-2 mb-3">
-          <h2 style={{ 
-            fontSize: 'var(--kp-detail-header-title-size, 14px)',
-            fontWeight: 'var(--kp-detail-header-title-weight, 700)',
-            color: 'var(--kp-detail-header-title-color, #111111)'
-          }}>
-            {playNumber}. {playActivity.title}
-          </h2>
-          <div style={{
-            fontSize: 'var(--kp-age-badge-font-size, 11px)',
-            fontWeight: 'var(--kp-age-badge-weight, 400)',
-            color: 'var(--kp-age-badge-color, #111111)',
-            background: 'var(--kp-age-badge-bg, #FFFFFF)',
-            borderWidth: 'var(--kp-age-badge-border-width, 1px)',
-            borderStyle: 'solid',
-            borderColor: 'var(--kp-age-badge-border-color, rgba(0,0,0,0.12))',
-            borderRadius: 'var(--kp-age-badge-radius, 8px)',
-            height: 'var(--kp-age-badge-height, 18px)',
-            padding: 'var(--kp-age-badge-padding, 2px 6px)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            {playActivity.ageRange}개월
-          </div>
-        </div>
 
-        {/* 버튼들: 목록, 이전, 다음 */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onBack}
-            style={{
-              fontSize: 'var(--kp-detail-header-list-btn-font-size, 12px)',
-              fontWeight: 'var(--kp-detail-header-list-btn-weight, 700)',
-              color: 'var(--kp-detail-header-list-btn-color, #111111)',
-              background: 'var(--kp-detail-header-list-btn-bg, transparent)',
-              borderWidth: 'var(--kp-detail-header-list-btn-border-width, 0px)',
-              borderStyle: 'solid',
-              borderColor: 'var(--kp-detail-header-list-btn-border-color, transparent)',
-              borderRadius: 'var(--kp-detail-header-list-btn-radius, 6px)',
-              padding: 'var(--kp-detail-header-list-btn-padding, 6px 12px)',
-              cursor: 'pointer',
-              transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--kp-detail-header-list-btn-hover-bg, rgba(0,0,0,0.05))'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--kp-detail-header-list-btn-bg, transparent)'}
-          >
-            목록
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onNavigate?.(Math.max(1, playNumber - 1))}
-              disabled={playNumber <= 1}
-              style={{
-                fontSize: 'var(--kp-detail-header-prev-btn-font-size, 12px)',
-                fontWeight: 'var(--kp-detail-header-prev-btn-weight, 700)',
-                color: 'var(--kp-detail-header-prev-btn-color, #111111)',
-                background: 'var(--kp-detail-header-prev-btn-bg, transparent)',
-                borderWidth: 'var(--kp-detail-header-prev-btn-border-width, 0px)',
-                borderStyle: 'solid',
-                borderColor: 'var(--kp-detail-header-prev-btn-border-color, transparent)',
-                borderRadius: 'var(--kp-detail-header-prev-btn-radius, 6px)',
-                padding: 'var(--kp-detail-header-prev-btn-padding, 6px 12px)',
-                cursor: playNumber <= 1 ? 'not-allowed' : 'pointer',
-                opacity: playNumber <= 1 ? 0.5 : 1,
-                transition: 'background 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              onMouseEnter={(e) => { if (playNumber > 1) e.currentTarget.style.background = 'var(--kp-detail-header-prev-btn-hover-bg, rgba(0,0,0,0.05))' }}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--kp-detail-header-prev-btn-bg, transparent)'}
-            >
+      {/* Play Detail Header with new layout */}
+      <div style={{ ...headerBox, flexDirection: 'column', gap: 0 }}>
+        {/* Top row: 중앙 제목/배지 */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', marginBottom: 4 }}>
+          <h2 style={{ ...headerTitle, margin: 0 }}>{playNumber}. {playActivity.title}</h2>
+          <Badge variant="outline" style={{ fontSize: headerTitle.fontSize, color: headerTitle.color, fontWeight: headerTitle.fontWeight, marginLeft: "8px" }}>{playActivity.ageRange}개월</Badge>
+        </div>
+        {/* Bottom row: 목록(왼쪽), 이전/다음(오른쪽) */}
+        <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+            <Button variant="ghost" size="sm" onClick={onBack} style={headerListBtn}><span style={{ fontWeight: headerListBtn.fontWeight }}>목록</span></Button>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            <Button variant="ghost" size="sm" style={headerPrevBtn} onClick={() => onNavigate?.(Math.max(1, playNumber - 1))} disabled={playNumber <= 1}>
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-              이전
-            </button>
-            <button
-              onClick={() => onNavigate?.(playNumber + 1)}
-              disabled={playNumber >= categoryTotalPlays}
-              style={{
-                fontSize: 'var(--kp-detail-header-next-btn-font-size, 12px)',
-                fontWeight: 'var(--kp-detail-header-next-btn-weight, 700)',
-                color: 'var(--kp-detail-header-next-btn-color, #111111)',
-                background: 'var(--kp-detail-header-next-btn-bg, transparent)',
-                borderWidth: 'var(--kp-detail-header-next-btn-border-width, 0px)',
-                borderStyle: 'solid',
-                borderColor: 'var(--kp-detail-header-next-btn-border-color, transparent)',
-                borderRadius: 'var(--kp-detail-header-next-btn-radius, 6px)',
-                padding: 'var(--kp-detail-header-next-btn-padding, 6px 12px)',
-                cursor: playNumber >= categoryTotalPlays ? 'not-allowed' : 'pointer',
-                opacity: playNumber >= categoryTotalPlays ? 0.5 : 1,
-                transition: 'background 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              onMouseEnter={(e) => { if (playNumber < categoryTotalPlays) e.currentTarget.style.background = 'var(--kp-detail-header-next-btn-hover-bg, rgba(0,0,0,0.05))' }}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--kp-detail-header-next-btn-bg, transparent)'}
-            >
-              다음
+              <span style={{ marginLeft: "4px", fontWeight: headerPrevBtn.fontWeight }}>이전</span>
+            </Button>
+            <Button variant="ghost" size="sm" style={headerNextBtn} onClick={() => onNavigate?.(playNumber + 1)} disabled={playNumber >= categoryTotalPlays}>
+              <span style={{ marginRight: "4px", fontWeight: headerNextBtn.fontWeight }}>다음</span>
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -403,32 +388,35 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
         {materialsSection && (<SectionBox box={small} title={titleText} body={bodyText} label="준비물">{renderTextWithLineBreaks(materialsSection.content)}</SectionBox>)}
         {goalSection && (<SectionBox box={small} title={titleText} body={bodyText} label="놀이 목표">{renderTextWithLineBreaks(goalSection.content)}</SectionBox>)}
         {devSection && (<SectionBox box={small} title={titleText} body={bodyText} label="발달 자극 요소">{renderTextWithLineBreaks(devSection.content)}</SectionBox>)}
-        
-        {/* 안전 주의: 제목과 박스는 별도 스타일, 본문은 섹션 본문(소) 스타일 사용 */}
-        {safetySection && (
-          <div data-ui="safety-section" style={{ 
-            borderWidth: 'var(--kp-safety-box-border-width, 1px)', 
-            borderStyle: "solid", 
-            borderColor: 'var(--kp-safety-box-border-color, #FFD700)', 
-            background: 'var(--kp-safety-box-bg, #FFF9E6)', 
-            borderRadius: 'var(--kp-safety-box-radius, 12px)', 
-            padding: 'var(--kp-detail-box-padding, 10px 10px)'
-          }}>
-            <div style={{ 
-              fontSize: 'var(--kp-safety-title-size, 16px)', 
-              color: 'var(--kp-safety-title-color, #D97706)', 
-              fontWeight: 'var(--kp-safety-title-weight, 700)', 
-              marginBottom: '6px', // 안전 주의 제목 아래 6px
-              marginLeft: 'var(--kp-safety-title-indent, 0px)' // UI에서 제어
-            }}>안전 주의</div>
-            <div style={{ 
-              fontSize: 'var(--kp-detail-body-size, 13px)', 
-              color: 'var(--kp-detail-body-color, #333333)', 
-              fontWeight: 'var(--kp-detail-body-weight, 400)',
-              marginLeft: 'var(--kp-detail-body-indent, 10px)' // UI에서 제어
-            }}>{renderTextWithLineBreaks(safetySection.content)}</div>
-          </div>
-        )}        <SectionBox box={small} title={titleText} body={bodyText} label="놀이 방법">
+        {safetySection && uiDesign ? (
+          <SectionBox
+            box={{
+              bg: uiDesign.safetySmallBox?.bg,
+              bw: uiDesign.safetySmallBox?.borderWidth ? `${uiDesign.safetySmallBox.borderWidth}px` : undefined,
+              bc: uiDesign.safetySmallBox?.borderColor,
+              radius: uiDesign.safetySmallBox?.radius ? `${uiDesign.safetySmallBox.radius}px` : undefined,
+              px: '10px',
+              py: '10px',
+            }}
+            title={{
+              size: uiDesign.safetyTitle?.size ? `${uiDesign.safetyTitle.size}px` : undefined,
+              color: uiDesign.safetyTitle?.color,
+              bold: uiDesign.safetyTitle?.bold,
+            }}
+            body={{
+              size: uiDesign.safetyBody?.size ? `${uiDesign.safetyBody.size}px` : undefined,
+              color: uiDesign.safetyBody?.color,
+              bold: uiDesign.safetyBody?.bold,
+            }}
+            label="안전 주의"
+          >
+            {renderTextWithLineBreaks(safetySection.content)}
+          </SectionBox>
+        ) : safetySection ? (
+          <SectionBox box={small} title={titleText} body={bodyText} label="안전 주의">{renderTextWithLineBreaks(safetySection.content)}</SectionBox>
+        ) : null}
+
+        <SectionBox box={small} title={titleText} body={bodyText} label="놀이 방법">
           {methodHeader && /\S/.test(methodHeader.content) ? (   // ✅ content에 실제 글자가 있을 때만 렌더
             <div style={{ marginBottom: "6px" }}>
               {renderTextWithLineBreaks(methodHeader.content)}
@@ -447,41 +435,19 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
         </SectionBox>
 
         {difficultyHeader && (
-          <div data-ui="difficulty-section" style={{ 
-            borderWidth: 'var(--kp-detail-box-border-width, ' + small.bw + ')', 
-            borderStyle: "solid", 
-            borderColor: 'var(--kp-detail-box-border-color, ' + small.bc + ')', 
-            background: 'var(--kp-detail-box-bg, ' + small.bg + ')', 
-            borderRadius: 'var(--kp-detail-box-radius, ' + small.radius + ')', 
-            padding: 'var(--kp-detail-box-padding, 10px 10px)'
-          }}>
-            {/* 난이도 섹션 제목 */}
-            <div style={{ 
-              fontSize: 'var(--kp-difficulty-title-size, 16px)', 
-              color: 'var(--kp-difficulty-title-color, #111111)', 
-              fontWeight: 'var(--kp-difficulty-title-weight, 700)', 
-              marginBottom: '6px' // 난이도 제목 아래 6px
-            }}>난이도 조절</div>
-
+          <SectionBox box={small} title={titleText} body={bodyText} label="난이도 조절">
             {hasFixedDifficulty ? (
-              <div className="p-2 rounded" style={{ background: 'rgba(0,0,0,0.03)', marginLeft: 'var(--kp-detail-body-indent, 10px)' }}>
-                <div className="flex items-start" style={{ gap: 'var(--kp-difficulty-checkbox-gap, 8px)' }}>
+              <div className="p-2 rounded" style={{ background: "rgba(0,0,0,0.03)" }}>
+                <div className="flex items-start gap-2">
+                  {/* ★ 체크박스 4px 내려 정렬 */}
                   <Checkbox
                     id="level-3"
-                    className="mt-1"
+                    className="mt-1"                     // ★ 추가
                     checked={completedLevels[2]}
                     onCheckedChange={(c) => handleLevelToggle(2, c)}
-                    style={{
-                      width: 'var(--kp-difficulty-checkbox-size, 20px)',
-                      height: 'var(--kp-difficulty-checkbox-size, 20px)',
-                    } as any}
                   />
-                  <div style={{ 
-                    fontSize: 'var(--kp-detail-body-size, 13px)', 
-                    color: 'var(--kp-detail-body-color, #333333)', 
-                    fontWeight: 'var(--kp-detail-body-weight, 400)' 
-                  }}>
-                    <label htmlFor="level-3" style={{ fontWeight: 'inherit' }}>Level 3</label> - 보통
+                  <div>
+                    <label htmlFor="level-3" style={{ fontWeight: 600 }}>Level 3</label> - 보통
                     <div style={{ opacity: 0.8, marginTop: 4 }}>
                       이 놀이는 난이도를 조절할 수 없습니다.
                     </div>
@@ -489,33 +455,28 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
                 </div>
               </div>
             ) : (
-              <div className="space-y-2" style={{ marginLeft: 'var(--kp-detail-body-indent, 10px)' }}>
+              <div className="space-y-2">
                 {[1, 2, 3, 4, 5].map((level) => {
                   const key = `level${level}` as keyof NonNullable<typeof detailData["levels"]>;
                   const content = detailData.levels?.[key] ?? "";
                   const names = ["더 쉽게", "쉽게", "보통", "어렵게", "더 어렵게"];
                   return (
-                    <div key={level} className="flex items-start" style={{ gap: 'var(--kp-difficulty-checkbox-gap, 8px)' }}>
+                    <div key={level} className="flex items-start gap-2">
+                      {/* ★ 체크박스 4px 내려 정렬 */}
                       <Checkbox
                         id={`level-${level}`}
-                        className="mt-1"
+                        className="mt-1"                 // ★ 추가
                         checked={completedLevels[level - 1]}
                         onCheckedChange={(c) => handleLevelToggle(level - 1, c)}
-                        style={{
-                          width: 'var(--kp-difficulty-checkbox-size, 20px)',
-                          height: 'var(--kp-difficulty-checkbox-size, 20px)',
-                        } as any}
                       />
-                      <div style={{ 
-                        fontSize: 'var(--kp-detail-body-size, 13px)', 
-                        color: 'var(--kp-detail-body-color, #333333)', 
-                        fontWeight: 'var(--kp-detail-body-weight, 400)' 
-                      }}>
-                        <label htmlFor={`level-${level}`} style={{ fontWeight: 'inherit' }}>
+                      <div>
+                        {/* ★ 제목·난이도 표기 굵기 통일, 행간 안정 */}
+                        <label htmlFor={`level-${level}`} style={{ fontWeight: 600 }}>
                           Level {level}
                         </label>
                         {" - "}
-                        <span style={{ fontWeight: 'inherit' }}>{names[level - 1]}</span>
+                        <span style={{ fontWeight: 600 }}>{names[level - 1]}</span>
+                        {/* ★ 본문 위 여백 4px로 고정, 개행 보존 */}
                         <p style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{content}</p>
                       </div>
                     </div>
@@ -523,7 +484,8 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
                 })}
               </div>
             )}
-          </div>
+          </SectionBox>
+
         )}
 
         {expansionSection && (<SectionBox box={small} title={titleText} body={bodyText} label="확장활동">{renderTextWithLineBreaks(expansionSection.content)}</SectionBox>)}

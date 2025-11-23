@@ -2,7 +2,7 @@
 (function() {
   console.log("=== 모든 카테고리의 발달나이 계산 비교 ===\n");
   
-  const categories = ["대근육", "소근육", "인지", "언어", "사회정서", "자조"];
+  const categories = ["대근육", "소근육", "인지", "언어", "사회 정서", "자조"];
   const results = {};
   
   categories.forEach(category => {

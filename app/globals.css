@@ -57,6 +57,14 @@
   --ui-accent: var(--primary, #1d4ed8);
   --ui-border: var(--border, #e5e7eb);
   --ui-muted-text: var(--muted-foreground, #6b7280);
+  /* Level Badge Colors (for border & text) */
+  /* :Level_Color { --Level-1: ...; ... } 형태로 정의 */
+  --level-0-color: #cccccc;   /* 80% grey */
+  --level-1-color: #0066cc;   /* 강청색 (Strong Blue) */
+  --level-2-color: #74b9ffff;   /* 짙은 하늘색 (Sky Blue) */
+  --level-3-color: #6e6e6eff;   /* 30% Grey (100%가 White) */
+  --level-4-color: #ff9800;   /* 오렌지 색 (Orange) */
+  --level-5-color: #ef4444;   /* 빨강색 (Red) */
 }
 
 /* Dark mode (UNCHANGED), with UI token mapping */

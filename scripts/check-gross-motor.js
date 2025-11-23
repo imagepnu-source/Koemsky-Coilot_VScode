@@ -74,7 +74,7 @@ if (!grossMotorRecord) {
 
 // 5. 다른 카테고리와 비교
 console.log("\n📋 전체 카테고리 발달 나이:");
-const categories = ["대근육", "소근육", "언어(표현)", "언어(이해)", "인지", "사회정서", "기본생활"];
+const categories = ["대근육", "소근육", "언어(표현)", "언어(이해)", "인지", "사회 정서", "기본생활"];
 categories.forEach(cat => {
   const key = `komensky_category_record_${cat}`;
   const data = localStorage.getItem(key);

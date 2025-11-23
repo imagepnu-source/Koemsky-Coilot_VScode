@@ -41,7 +41,9 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
         if (!response.ok) return
 
         const rawData = await response.text()
-        const sections = rawData.split("\n\n").filter((section) => section.trim())
+        // Normalize line endings for Windows/Mac compatibility
+        const normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+        const sections = normalizedData.split(/\n\n+/).filter((section) => section.trim())
         const categories: string[] = []
 
         sections.forEach((section) => {

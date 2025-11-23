@@ -7,14 +7,19 @@
 import type { AvailablePlayList, PlayCategory, DetailedActivity } from "./types"
 import { initializeGlobalCategories, reinitializeGlobalCategories } from "./global-categories"
 
-let cachedPlayData: Record<string, AvailablePlayList[]> | null = null
-let cachedCategories: { korean: string; english: string }[] | null = null
-let isLoading = false
-
 // Component: getCachedCategories — entry point
-
 export function getCachedCategories(): { korean: string; english: string }[] {
-  return cachedCategories || []
+  // This function is only used for category name mapping, not for data loading.
+  // The actual available play list is loaded from play_data.txt.
+  return [
+     { korean: "대 근육", english: "gross-motor" },
+     { korean: "소 근육", english: "fine-motor" },
+     { korean: "스스로", english: "self-care" },
+     { korean: "문제 해결", english: "problem-solving" },
+     { korean: "사회 정서", english: "social-emotion" },
+     { korean: "수용 언어", english: "receptive-language" },
+     { korean: "표현 언어", english: "expressive-language" },
+  ];
 }
 
 // Component: extractCategoriesFromPlayData — entry point
@@ -27,15 +32,17 @@ export function extractCategoriesFromPlayData(rawData: string): { korean: string
     return []
   }
 
-  const sections = rawData.split("\n\n").filter((section) => section.trim())
+  // Normalize Windows/Mac line endings to \n so blank-line splitting works reliably
+  const normalized = rawData.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const sections = normalized.split(/\n\n+/).filter((section) => section.trim())
   const categories: { korean: string; english: string }[] = []
 
   sections.forEach((section, index) => {
     const lines = section.split("\n").filter((line) => line.trim())
     if (lines.length > 0) {
-      const rawCategoryName = lines[0]
+      const rawCategoryName = lines[0].trim() // trim to remove any trailing newlines
 
-      const match = rawCategoryName.match(/^(.+?),\s*(.+?)$/)
+      const match = rawCategoryName.match(/^(.+?),\s*(.+)$/)
 
       let koreanName = ""
       let englishName = ""
@@ -102,133 +109,101 @@ export function createCategoryMapping(categories: { korean: string; english: str
 // Component: getEnglishCategoryName — entry point
 
 export function getEnglishCategoryName(koreanName: string): string {
+  // 입력이 "한글, 영문" 형태로 전달되는 경우가 있어
+  // 먼저 콤마로 분리하여 한글 부분만 사용하도록 안전하게 처리합니다.
+  const input = typeof koreanName === "string" && koreanName.includes(",") ? koreanName.split(",")[0].trim() : koreanName
+
   const categories = getCachedCategories()
 
-  // 동적으로 로드된 카테고리에서 영문명 찾기
-  const category = categories.find((cat) => cat.korean === koreanName)
+  // 동적으로 로드된 카테고리에서 영문명 찾기 (한글명 비교)
+  const category = categories.find((cat) => cat.korean === input)
   if (category) {
     return category.english
   }
 
   const staticMapping: Record<string, string> = {
-    대근육: "gross-motor",
-    소근육: "fine-motor",
-    스스로: "self-care",
-    "문제 해결": "problem-solving",
-    "사회적 감성": "social-emotional",
-    "수용 언어": "receptive-language",
-    "표현 언어": "expressive-language",
+     "대 근육": "gross-motor",
+     "소 근육": "fine-motor",
+     스스로: "self-care",
+     "문제 해결": "problem-solving",
+     "사회 정서": "social-emotion",
+     "수용 언어": "receptive-language",
+     "표현 언어": "expressive-language",
   }
 
   // 정적 매핑에서 찾기
-  if (staticMapping[koreanName]) {
-    return staticMapping[koreanName]
+  if (staticMapping[input]) {
+    return staticMapping[input]
   }
 
-  // 찾지 못한 경우 fallback: 한글명을 영문 형식으로 변환
-  return koreanName.toLowerCase().replace(/\s+/g, "-")
+  // 찾지 못한 경우 fallback: 입력 문자열을 영문형 파일명 스타일로 변환
+  return input.toLowerCase().replace(/\s+/g, "-")
 }
 
 // Component: parsePlayData — entry point
 
 export function parsePlayData(rawData: string): Record<string, AvailablePlayList[]> {
-  console.log("[v0] parsePlayData called with data length:", rawData.length)
-
+  // Parse play_data.txt and return available play list by category
   const extractedCategories = extractCategoriesFromPlayData(rawData)
-  cachedCategories = extractedCategories
-
   const categories: Record<string, AvailablePlayList[]> = {}
-
-  // 추출된 카테고리로 초기화 (한글명을 키로 사용)
   extractedCategories.forEach(({ korean }) => {
     categories[korean] = []
   })
-
   const categoryMapping = createCategoryMapping(extractedCategories)
-
   if (rawData.includes("<!DOCTYPE html") || rawData.includes("<html")) {
-    console.error("[v0] Received HTML instead of play data - file not found or wrong path")
     return categories
   }
-
-  const sections = rawData.split("\n\n").filter((section) => section.trim())
-  console.log("[v0] Found sections:", sections.length)
-
-  sections.forEach((section, index) => {
+  const normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const sections = normalizedData.split(/\n\n+/).filter((section) => section.trim())
+  sections.forEach((section) => {
     const lines = section.split("\n").filter((line) => line.trim())
     if (lines.length === 0) return
-
-    const rawCategoryName = lines[0]
-    const match = rawCategoryName.match(/^(.+?),\s*(.+?)$/)
-    const koreanName = match ? match[1].trim() : rawCategoryName.trim()
-
-    const categoryName = categoryMapping[koreanName]
-
-    if (!categoryName || !categories[categoryName]) {
-      console.log("[v0] Unknown category:", rawCategoryName)
-      return
-    }
-
-    // Skip header line and process data lines
-    let activitiesAdded = 0
+    const rawCategoryName = lines[0].trim()
+    const match = rawCategoryName.match(/^(.+?),\s*(.+)$/)
+    const koreanName = match ? match[1].trim() : rawCategoryName
+    if (!categories[koreanName]) return
     for (let i = 2; i < lines.length; i++) {
-      const parts = lines[i].split("\t")
+      let parts = lines[i].split("\t");
+      if (parts.length < 3) {
+        parts = lines[i].split(/\s{2,}/);
+      }
       if (parts.length >= 3) {
-        const [numberStr, title, ageRange] = parts
-        const number = Number.parseInt(numberStr)
-
-        // Parse age range (e.g., "0.5-4" -> min: 0.5, max: 4, or "12" -> min=12, max=12)
-        // Use parseFloat to preserve decimal ages (previously parseInt dropped decimals)
-        const ageParts = ageRange.split("-")
-        let minAge: number, maxAge: number
-
+        const [numberStr, title, ageRange] = parts;
+        if (numberStr === "Number" || title === "Korean Title" || ageRange === "Age Range") {
+          continue;
+        }
+        const number = Number.parseInt(numberStr);
+        const ageParts = ageRange.split("-");
+        let minAge: number, maxAge: number;
         if (ageParts.length === 1) {
-          // Single age like "12" should be treated as min=max=12
-          const singleAge = Number.parseFloat(ageParts[0])
-          minAge = singleAge
-          maxAge = singleAge
+          const singleAge = Number.parseFloat(ageParts[0]);
+          minAge = singleAge;
+          maxAge = singleAge;
         } else {
-          // Range like "0.5-4" should be parsed with decimals preserved
-          minAge = Number.parseFloat((ageParts[0] || '').trim())
-          maxAge = Number.parseFloat((ageParts[1] || '').trim())
+          minAge = Number.parseFloat((ageParts[0] || '').trim());
+          maxAge = Number.parseFloat((ageParts[1] || '').trim());
         }
-
         if (maxAge === 0 && minAge > 0) {
-          maxAge = minAge
+          maxAge = minAge;
         }
-
-        // Validate parsed ages
         if (isNaN(minAge) || isNaN(maxAge)) {
-          console.error(`[v0] Invalid age data for activity ${number}: "${ageRange}" -> min=${minAge}, max=${maxAge}`)
-          continue // Skip this activity
+          continue;
         }
-
         if (maxAge < minAge) {
-          console.error(`[v0] Invalid age range for activity ${number}: max (${maxAge}) < min (${minAge})`)
-          continue // Skip this activity
+          continue;
         }
-
-        categories[categoryName].push({
+        categories[koreanName].push({
           number,
           title,
           ageRange,
-          category: categoryName as PlayCategory,
+          category: koreanName as PlayCategory,
           minAge,
           maxAge,
-        })
-        activitiesAdded++
+        });
       }
     }
-    console.log(`[v0] Added ${activitiesAdded} activities to ${categoryName}`)
   })
-
-  console.log(
-    "[v0] Final categories with counts:",
-    Object.keys(categories).map((key) => `${key}: ${categories[key].length}`),
-  )
-
   reinitializeGlobalCategories()
-
   return categories
 }
 
@@ -238,9 +213,12 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   console.log(`[v0] DEBUG: parseDetailedActivity called for activity ${activityNumber}`)
   console.log(`[v0] DEBUG: Raw data length: ${rawData.length}`)
 
+  // Normalize line endings for Windows/Mac compatibility
+  const normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
   // 각 활동은 "Number X:" 패턴으로 시작하고, 다음 "Number Y:" 또는 파일 끝까지가 하나의 활동
   const numberPattern = /^Number (\d+):\s/gm
-  const matches = [...rawData.matchAll(numberPattern)]
+  const matches = [...normalizedData.matchAll(numberPattern)]
 
   console.log(`[v0] DEBUG: Found ${matches.length} activity sections`)
 
@@ -254,11 +232,12 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   // 활동 시작 위치와 끝 위치 계산
   const startIndex = targetMatch.index!
   const nextMatch = matches.find((match) => Number.parseInt(match[1]) > activityNumber)
-  const endIndex = nextMatch ? nextMatch.index! : rawData.length
+  const endIndex = nextMatch ? nextMatch.index! : normalizedData.length
 
   // 해당 활동의 텍스트 추출
-  const activityText = rawData.substring(startIndex, endIndex).trim()
-  const lines = activityText.split("\n").filter((line) => line.trim())
+  const activityText = normalizedData.substring(startIndex, endIndex).trim()
+  // 빈 줄만 제거하되, 공백이 있는 줄은 유지 (줄바꿈 보존)
+  const lines = activityText.split("\n").filter((line) => line.trim() !== "")
 
   console.log(`[v0] DEBUG: Found matching activity section with ${lines.length} lines`)
   console.log(`[v0] DEBUG: Activity section content:`, lines.slice(0, 10).join(" | "))
@@ -273,21 +252,34 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   const saveCurrentSection = () => {
     if (currentSection && currentSection.title) {
       const contentLines = currentSection.lines.filter((line: string) => line.trim() !== "---")
+      // 각 라인의 원본 줄바꿈 유지 (빈 줄 제거하지 않음)
       currentSection.content = contentLines.join("\n").trim()
-      result.sections.push(currentSection)
-      console.log(`[v0] DEBUG: Saved section "${currentSection.title}" with ${contentLines.length} lines`)
+      
+      // 난이도 조절 섹션은 content가 비어있어도 저장 (Level 정보는 별도로 파싱됨)
+      const isDifficulty = currentSection.title.includes("난이도") || currentSection.title.includes("조절")
+      
+      console.log(`[v0] DEBUG: saveCurrentSection - title: "${currentSection.title}", isDifficulty: ${isDifficulty}, lines: ${contentLines.length}, content: "${currentSection.content}"`)
+      
+      // 섹션 저장 (난이도 조절은 항상 저장)
+      if (isDifficulty || currentSection.content || contentLines.length > 0) {
+        result.sections.push(currentSection)
+        console.log(`[v0] DEBUG: ✓ Saved section "${currentSection.title}"`)
+      } else {
+        console.log(`[v0] DEBUG: ✗ Skipped section "${currentSection.title}" (empty and not difficulty)`)
+      }
     }
   }
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]
+    const trimmedLine = line.trim()
 
-    if (line.trim() === "---") {
+    if (trimmedLine === "---") {
       continue
     }
 
     // Level 처리 (기존 방식 유지)
-    const levelMatch = line.match(/^Level (\d+):\s*(.*)/)
+    const levelMatch = trimmedLine.match(/^Level (\d+):\s*(.*)/)
     if (levelMatch) {
       saveCurrentSection() // 이전 섹션 저장
       currentSection = null
@@ -299,13 +291,28 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
       continue
     }
 
-    // 소제목 찾기 (콜론으로 끝나는 줄)
-    const subtitleMatch = line.match(/^(.+?):\s*(.*)$/)
-    if (subtitleMatch) {
+
+    // 소제목 찾기 (콜론으로 끝나는 줄: 들여쓰기/공백 상관없이)
+    // 예: "놀이 방법:", "놀이 목표:" 등
+    const subtitleMatch = trimmedLine.match(/^([^(:]+?):\s*(.*)$/)
+
+    // "놀이 방법" 섹션 내부의 숫자로 시작하는 줄(1. 준비:, 2. 단서...)은 섹션이 아닌 내용으로 처리
+    const isInMethodSection = currentSection && (currentSection.title === "놀이 방법" || currentSection.title === "놀이방법")
+    const isNumberedStep = trimmedLine.match(/^\d+\.\s/)
+
+    if (subtitleMatch && !(isInMethodSection && isNumberedStep)) {
       saveCurrentSection() // 이전 섹션 저장
 
       const title = subtitleMatch[1].trim()
-      const initialContent = subtitleMatch[2].trim()
+      let initialContent = subtitleMatch[2].trim()
+
+      // "난이도 조절" 섹션일 때 연령 범위 패턴 제거 (display에서 사용하지 않음)
+      if (title.includes("난이도") || title.includes("조절")) {
+        const beforeRemoval = initialContent
+        // 하이픈(-), en-dash(–), em-dash(—) 모두 매칭, 시작 위치와 관계없이
+        initialContent = initialContent.replace(/\([0-9.]+[-–—][0-9.]+개월\)\s*/g, '')
+        console.log(`[v0] DEBUG: 난이도 조절 섹션 - 연령 제거: "${beforeRemoval}" → "${initialContent}"`)
+      }
 
       currentSection = {
         title: title,
@@ -313,9 +320,21 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
       }
       console.log(`[v0] DEBUG: Starting new section "${title}" with initial content: "${initialContent}"`)
     } else if (currentSection) {
-      // 현재 섹션의 연속 내용
-      currentSection.lines.push(line)
-      console.log(`[v0] DEBUG: Adding to section "${currentSection.title}": "${line}"`)
+      // 이미지 포맷: [이미지, 파일명.png, scale=1.0, "설명 텍스트"]
+      const imageMatch = trimmedLine.match(/^\[이미지,\s*([^,\]]+),\s*scale=([\d.]+),\s*"([^"]*)"\s*\]$/);
+      if (imageMatch) {
+        currentSection.lines.push({
+          type: 'image',
+          src: imageMatch[1].trim(),
+          scale: parseFloat(imageMatch[2]),
+          desc: imageMatch[3].trim()
+        });
+        console.log(`[v0] DEBUG: 이미지 파싱(라인 삽입): src=${imageMatch[1].trim()}, scale=${imageMatch[2]}, desc=${imageMatch[3].trim()}`);
+      } else if (trimmedLine) {
+        // 원본 line을 사용하여 들여쓰기 보존 (앞의 공백 유지)
+        currentSection.lines.push(line)
+        console.log(`[v0] DEBUG: Adding to section "${currentSection.title}": "${line}"`)
+      }
     }
   }
 
@@ -365,119 +384,7 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   return result as DetailedActivity
 }
 
-async function initializeCache(): Promise<Record<string, AvailablePlayList[]>> {
-  if (cachedPlayData) {
-    console.log("[v0] CACHE: Using existing cached data")
-    initializeGlobalCategories()
-    return cachedPlayData
-  }
 
-  if (isLoading) {
-    console.log("[v0] CACHE: Already loading, waiting...")
-    // 로딩 중이면 잠시 대기 후 재시도
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    return initializeCache()
-  }
 
-  console.log("[v0] CACHE: Loading play_data.txt for the first time")
-  isLoading = true
-
-  try {
-    const response = await fetch("/play_data.txt")
-    if (!response.ok) {
-      console.error(`[v0] CACHE: Failed to fetch play_data.txt: ${response.status}`)
-      isLoading = false
-      return {}
-    }
-
-    const rawData = await response.text()
-    cachedPlayData = parsePlayData(rawData)
-    console.log("[v0] CACHE: Successfully cached all play data")
-    isLoading = false
-    return cachedPlayData
-  } catch (error) {
-    console.error("[v0] CACHE: Error loading play data:", error)
-    isLoading = false
-    return {}
-  }
-}
-
-export async function loadCategoryData(category: string): Promise<AvailablePlayList[]> {
-  console.log(`[v0] CACHE: Loading ${category} data from cache`)
-
-  const allData = await initializeCache()
-
-  console.log(`[v0] DEBUG: Available categories in cache:`, Object.keys(allData))
-  console.log(`[v0] DEBUG: Looking for category: "${category}"`)
-
-  const categoryData = allData[category] || []
-
-  if (categoryData.length === 0) {
-    console.log(`[v0] DEBUG: No data found for "${category}", trying alternative lookups`)
-
-    // Try to find by partial match or alternative names
-    const alternativeKey = Object.keys(allData).find((key) => key.includes(category) || category.includes(key))
-
-    if (alternativeKey) {
-      console.log(`[v0] DEBUG: Found alternative key: "${alternativeKey}"`)
-      const alternativeData = allData[alternativeKey] || []
-      console.log(`[v0] CACHE: Found ${alternativeData.length} activities for alternative key "${alternativeKey}"`)
-      return alternativeData
-    }
-  }
-
-  console.log(`[v0] CACHE: Found ${categoryData.length} activities for ${category}`)
-  return categoryData
-}
-
-// Component: loadCategoryDataSync — entry point
-
-export function loadCategoryDataSync(category: string): AvailablePlayList[] {
-  console.log(`[v0] CACHE: Loading ${category} data from cache (sync)`)
-
-  if (!cachedPlayData) {
-    console.log(`[v0] CACHE: No cached data available for sync load`)
-    return []
-  }
-
-  console.log(`[v0] DEBUG: Available categories in cache:`, Object.keys(cachedPlayData))
-  console.log(`[v0] DEBUG: Looking for category: "${category}"`)
-
-  const categoryData = cachedPlayData[category] || []
-
-  if (categoryData.length === 0) {
-    console.log(`[v0] DEBUG: No data found for "${category}", trying alternative lookups`)
-
-    // Try to find by partial match or alternative names
-    const alternativeKey = Object.keys(cachedPlayData).find((key) => key.includes(category) || category.includes(key))
-
-    if (alternativeKey) {
-      console.log(`[v0] DEBUG: Found alternative key: "${alternativeKey}"`)
-      const alternativeData = cachedPlayData[alternativeKey] || []
-      console.log(`[v0] CACHE: Found ${alternativeData.length} activities for alternative key "${alternativeKey}"`)
-      return alternativeData
-    }
-  }
-
-  console.log(`[v0] CACHE: Found ${categoryData.length} activities for ${category}`)
-  return categoryData
-}
-
-export async function loadAllCategoriesIndependently(): Promise<Record<string, AvailablePlayList[]>> {
-  console.log("[v0] CACHE: Loading all categories from cache")
-
-  const allData = await initializeCache()
-  console.log("[v0] CACHE: Returning all cached categories")
-  return allData
-}
-
-// Component: clearCache — entry point
-
-export function clearCache(): void {
-  console.log("[v0] CACHE: Clearing cached data")
-  cachedPlayData = null
-  cachedCategories = null
-  isLoading = false
-}
-
-export { cachedPlayData }
+// (Next.js 클라이언트/서버 분리: 서버 환경에서만 파일 접근 필요)
+// 클라이언트 코드에서는 details 파일을 직접 읽지 않음. SSR/API에서만 파일 접근.

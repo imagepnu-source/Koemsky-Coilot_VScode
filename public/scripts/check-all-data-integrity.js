@@ -2,7 +2,7 @@
 (function() {
   console.log("=== 전체 카테고리 데이터 무결성 검사 ===\n");
   
-  const categories = ["대근육", "소근육", "인지", "언어", "사회정서", "자조"];
+  const categories = ["대근육", "소근육", "인지", "언어", "사회 정서", "자조"];
   const results = {};
   
   categories.forEach(category => {
