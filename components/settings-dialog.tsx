@@ -305,7 +305,19 @@ export function SettingsDialog({
 
   <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          style={{
+            maxWidth: '100vw',
+            width: '100%',
+            maxHeight: '630px', // 50% taller than previous 420px
+            minHeight: '320px',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
+            overscrollBehavior: 'contain',
+          }}
+        >
           <DialogHeader>
             <DialogTitle>설정</DialogTitle>
             <DialogDescription>
@@ -335,16 +347,25 @@ export function SettingsDialog({
                     onChange={(e) => setEditBirthDate(e.target.value)}
                   />
                 </div>
-                <Button onClick={handleSaveProfile} className="w-full bg-transparent" variant="outline">
-                  정보 저장
-                </Button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button onClick={handleSaveProfile} className="flex-1 bg-transparent" variant="outline">
+                    정보 저장
+                  </Button>
+                  <Button
+                    onClick={() => onOpenChange(false)}
+                    className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+                    style={{ border: 'none' }}
+                  >
+                    닫기
+                  </Button>
+                </div>
               </div>
             </div>
 
             <Separator />
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">테스트 데이터 (N={testDataCount})</h3>
+              <h3 className="text-sm font-medium"> 이하 UI는 개발자용입니다. </h3>
               <div className="space-y-2">
                 <div>
                   <Label htmlFor="testDataCount">카테고리별 테스트 데이터 개수</Label>
@@ -387,7 +408,7 @@ export function SettingsDialog({
             <Separator />
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">데이터 관리</h3>
+              <h3 className="text-sm font-medium">데이터 관리 (개발자용) </h3>
               <div className="space-y-2">
                 <Button onClick={handleBackupData} className="w-full bg-transparent" variant="outline">
                   아이 데이터 백업
@@ -401,7 +422,7 @@ export function SettingsDialog({
             <Separator />
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">UI 설정 관리</h3>
+              <h3 className="text-sm font-medium">UI 설정 관리 (개발자용)</h3>
               <div className="space-y-2">
                 <Button onClick={handleBackupUISettings} className="w-full bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" variant="outline">
                   UI 설정 백업

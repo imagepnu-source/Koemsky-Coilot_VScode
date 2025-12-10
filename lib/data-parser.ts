@@ -214,7 +214,10 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   console.log(`[v0] DEBUG: Raw data length: ${rawData.length}`)
 
   // Normalize line endings for Windows/Mac compatibility
-  const normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  let normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // /* ... */ 주석 블록 제거 (줄바꿈 포함, 여러 개 가능)
+  normalizedData = normalizedData.replace(/\/\*[\s\S]*?\*\//g, "")
 
   // 각 활동은 "Number X:" 패턴으로 시작하고, 다음 "Number Y:" 또는 파일 끝까지가 하나의 활동
   const numberPattern = /^Number (\d+):\s/gm
@@ -251,21 +254,20 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
 
   const saveCurrentSection = () => {
     if (currentSection && currentSection.title) {
-      const contentLines = currentSection.lines.filter((line: string) => line.trim() !== "---")
-      // 각 라인의 원본 줄바꿈 유지 (빈 줄 제거하지 않음)
-      currentSection.content = contentLines.join("\n").trim()
-      
+      let contentLines = currentSection.lines.filter((line: string) => line.trim() !== "---");
+      // 증거 기반: contentLines와 content를 모두 로그로 남김
+      console.log(`[증거] Section "${currentSection.title}" contentLines(before join):`, JSON.stringify(contentLines));
+      currentSection.content = contentLines.join("\n"); // .trim() 제거: 앞/뒤 공백 보존
+      console.log(`[증거] Section "${currentSection.title}" content(after join):`, JSON.stringify(currentSection.content));
       // 난이도 조절 섹션은 content가 비어있어도 저장 (Level 정보는 별도로 파싱됨)
-      const isDifficulty = currentSection.title.includes("난이도") || currentSection.title.includes("조절")
-      
-      console.log(`[v0] DEBUG: saveCurrentSection - title: "${currentSection.title}", isDifficulty: ${isDifficulty}, lines: ${contentLines.length}, content: "${currentSection.content}"`)
-      
+      const isDifficulty = currentSection.title.includes("난이도") || currentSection.title.includes("조절");
+      console.log(`[v0] DEBUG: saveCurrentSection - title: "${currentSection.title}", isDifficulty: ${isDifficulty}, lines: ${contentLines.length}, content: "${currentSection.content}"`);
       // 섹션 저장 (난이도 조절은 항상 저장)
       if (isDifficulty || currentSection.content || contentLines.length > 0) {
-        result.sections.push(currentSection)
-        console.log(`[v0] DEBUG: ✓ Saved section "${currentSection.title}"`)
+        result.sections.push(currentSection);
+        console.log(`[v0] DEBUG: ✓ Saved section "${currentSection.title}"`);
       } else {
-        console.log(`[v0] DEBUG: ✗ Skipped section "${currentSection.title}" (empty and not difficulty)`)
+        console.log(`[v0] DEBUG: ✗ Skipped section "${currentSection.title}" (empty and not difficulty)`);
       }
     }
   }

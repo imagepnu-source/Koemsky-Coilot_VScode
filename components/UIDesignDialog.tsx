@@ -116,7 +116,7 @@ export default function UIDesignDialog() {
         data-ui="design-open"
         onClick={() => setOpen(true)}
       >
-        UI Design 2
+        uiSet
       </button>
 
       {open && (
@@ -142,7 +142,7 @@ export default function UIDesignDialog() {
             aria-label="UI Design Dialog"
           >
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b cursor-grab" onMouseDown={startDrag}>
-              <h2 className="text-lg font-bold">UI Design PopUp 2</h2>
+              <h2 className="text-lg font-bold">uiSet 개발자 이외는 사용 금지, 즉시 Close!</h2>
               <div className="flex items-center gap-2">
                 <button type="button" className="px-2 py-1 text-sm border rounded" onClick={persist}>Save</button>
                 <button type="button" className="px-2 py-1 text-sm border rounded" onClick={() => setOpen(false)}>Close</button>

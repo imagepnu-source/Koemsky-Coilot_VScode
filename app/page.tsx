@@ -80,9 +80,23 @@ useEffect(() => {
     return categories.length > 0 ? (categories[0] as PlayCategory) : "그래프"
   })
   const [selectedPlay, setSelectedPlay] = useState<{ category: PlayCategory; number: number } | null>(null)
+  // 카테고리별 마지막 뷰 타입과 상태를 저장
+  type CategoryLastView = {
+    type: 'list' | 'detail',
+    scrollPosition?: number,
+    playNumber?: number
+  }
+  const [categoryLastView, setCategoryLastView] = useState<Record<PlayCategory, CategoryLastView>>({} as any)
+  useEffect(() => {
+    console.log('[DIAG] selectedPlay', selectedPlay);
+  }, [selectedPlay]);
+  useEffect(() => {
+    console.log('[DIAG] categoryLastView', categoryLastView);
+  }, [categoryLastView]);
   const [playData, setPlayData] = useState<Record<PlayCategory, any[]>>({} as any)
-  const [scrollPositions, setScrollPositions] = useState<Record<PlayCategory, number>>({} as any)
   const [categoryDevelopmentAges, setCategoryDevelopmentAges] = useState<Record<PlayCategory, number>>({} as any)
+  // 리스트에서 "댓글 창 열기"로 들어왔는지 플래그
+  const [pendingOpenComment, setPendingOpenComment] = useState<{ category: PlayCategory; number: number } | null>(null)
 
   // Load full UI design config (AllCfg) from localStorage
   const [uiDesign, setUIDesign] = useState(() => (typeof window !== 'undefined' ? loadUIDesignCfg() : undefined));
@@ -239,28 +253,50 @@ useEffect(() => {
     selectedTab !== "그래프" ? categoryDevelopmentAges?.[selectedTab] || 0 : 0
 
   const handleTabChange = (value: string) => {
+    console.log('[DIAG] handleTabChange', value, 'categoryLastView:', categoryLastView);
     if (selectedTab !== "그래프") {
       const scrollContainer =
         document.querySelector(`[data-category="${selectedTab}"]`) ||
         document.querySelector(".overflow-y-auto")
       if (scrollContainer) {
         const currentScrollTop = (scrollContainer as HTMLElement).scrollTop
-        setScrollPositions((prev) => ({ ...prev, [selectedTab]: currentScrollTop }))
-      } else {
-        const windowScrollTop = window.scrollY || document.documentElement.scrollTop
-        setScrollPositions((prev) => ({ ...prev, [selectedTab]: windowScrollTop }))
+        setCategoryLastView((prev) => ({
+          ...prev,
+          [selectedTab]: {
+            ...(prev[selectedTab] || {}),
+            ...(prev[selectedTab]?.type === 'detail' ? { playNumber: prev[selectedTab].playNumber } : {}),
+            type: prev[selectedTab]?.type || 'list',
+            scrollPosition: currentScrollTop
+          }
+        }))
       }
     }
 
     setSelectedTab(value as PlayCategory | "그래프")
-    setSelectedPlay(null)
+
+    // 카테고리별 마지막 뷰 타입/상태로 복원
+    if (value !== "그래프") {
+      const lastView = categoryLastView[value as PlayCategory];
+      if (lastView) {
+        if (lastView.type === 'detail' && lastView.playNumber) {
+          setSelectedPlay({ category: value as PlayCategory, number: lastView.playNumber });
+        } else {
+          setSelectedPlay(null);
+        }
+      } else {
+        setSelectedPlay(null);
+      }
+    } else {
+      setSelectedPlay(null);
+    }
 
     setTimeout(() => {
       if (value !== "그래프") {
         const newScrollContainer =
           document.querySelector(`[data-category="${value}"]`) ||
           document.querySelector(".overflow-y-auto")
-        const savedPosition = scrollPositions[value as PlayCategory] || 0
+        const lastView = categoryLastView[value as PlayCategory];
+        const savedPosition = lastView?.type === 'list' ? (lastView.scrollPosition || 0) : 0;
         if (newScrollContainer) {
           (newScrollContainer as HTMLElement).scrollTop = savedPosition
         } else {
@@ -271,26 +307,37 @@ useEffect(() => {
   }
 
   const handlePlaySelect = (category: PlayCategory, number: number) => {
-    if (selectedTab !== "그래프") {
-      const scrollContainer =
-        document.querySelector(`[data-category="${selectedTab}"]`) ||
-        document.querySelector(".overflow-y-auto")
-      if (scrollContainer) {
-        const currentScrollTop = (scrollContainer as HTMLElement).scrollTop
-        setScrollPositions((prev) => ({ ...prev, [selectedTab]: currentScrollTop }))
-      }
-    }
+    console.log('[DIAG] handlePlaySelect', category, number);
     setSelectedPlay({ category, number })
+    setCategoryLastView((prev) => ({
+      ...prev,
+      [category]: {
+        type: 'detail',
+        playNumber: number,
+        scrollPosition: prev[category]?.scrollPosition || 0
+      }
+    }))
+    // 기본 선택에서는 댓글 자동 오픈 플래그 초기화
+    setPendingOpenComment(null)
   }
 
   const handleBackToList = () => {
     setSelectedPlay(null)
+    setCategoryLastView((prev) => ({
+      ...prev,
+      [selectedTab]: {
+        type: 'list',
+        scrollPosition: prev[selectedTab]?.scrollPosition || 0,
+        playNumber: prev[selectedTab]?.playNumber || undefined
+      }
+    }))
     setTimeout(() => {
       if (selectedTab !== "그래프") {
         const scrollContainer =
           document.querySelector(`[data-category="${selectedTab}"]`) ||
           document.querySelector(".overflow-y-auto")
-        const savedPosition = scrollPositions[selectedTab] || 0
+        const lastView = categoryLastView[selectedTab];
+        const savedPosition = lastView?.type === 'list' ? (lastView.scrollPosition || 0) : 0;
         if (scrollContainer) {
           (scrollContainer as HTMLElement).scrollTop = savedPosition
         }
@@ -384,19 +431,21 @@ useEffect(() => {
                 fontWeight: uiDesign?.devage?.bold ? 700 : 400,
                 color: uiDesign?.devage?.color,
                 fontFamily: uiDesign?.devage?.family,
+                whiteSpace: 'pre-line',
               }}
             >
-              발달 나이: {overallDevelopmentAge.toFixed(2)}개월
+              {`발달 나이:\n${overallDevelopmentAge.toFixed(2)}개월`}
             </div>
             <div
               data-ui="catag"
               style={{
-                fontSize: uiDesign?.catag?.size ? `${uiDesign.catag.size}px` : undefined,
+                fontSize: uiDesign?.catag?.size ? `${uiDesign.catag?.size}px` : undefined,
                 fontWeight: uiDesign?.catag?.bold ? 700 : 400,
                 color: uiDesign?.catag?.color,
+                whiteSpace: 'pre-line',
               }}
             >
-              {selectedTab !== "그래프" ? `${selectedTab} 나이: ${currentCategoryAge.toFixed(2)}개월` : " "}
+              {selectedTab !== "그래프" ? `${selectedTab} 나이:\n${currentCategoryAge.toFixed(2)}개월` : " "}
             </div>
             <div>
               <Select value={selectedTab} onValueChange={handleTabChange}>
@@ -430,6 +479,7 @@ useEffect(() => {
                     onNavigate={handlePlayNavigate}
                     totalPlays={playData?.[category]?.length || 25}
                     uiDesign={uiDesign}
+                    autoOpenComment={!!(pendingOpenComment && pendingOpenComment.category === category && pendingOpenComment.number === selectedPlay.number)}
                     activity={(() => {
                       const found = (playData?.[category] || []).find((a: any) => {
                         const num = a.playNumber ?? a.num ?? a.number;
@@ -489,6 +539,22 @@ useEffect(() => {
                         };
                       })}
                       onPlaySelect={handlePlaySelect}
+                      onOpenCommentDialog={(cat, num) => {
+                        // 상세 화면으로 이동한 뒤 해당 놀이 댓글창 자동 오픈 요청
+                        setPendingOpenComment({ category: cat as PlayCategory, number: num })
+                      }}
+                      restoreScrollPosition={categoryLastView[category]?.type === 'list' ? (categoryLastView[category]?.scrollPosition || 0) : 0}
+                      onScrollChange={(pos, topItemNum) => {
+                        setCategoryLastView(prev => ({
+                          ...prev,
+                          [category]: {
+                            type: 'list',
+                            scrollPosition: pos,
+                            playNumber: topItemNum
+                          }
+                        }));
+                        console.log('[DIAG] onScrollChange', category, 'scrollTop:', pos, 'topItemNum:', topItemNum);
+                      }}
                     />
                   </div>
                 )}
