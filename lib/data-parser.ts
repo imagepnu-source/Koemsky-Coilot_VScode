@@ -25,7 +25,7 @@ export function getCachedCategories(): { korean: string; english: string }[] {
 // Component: extractCategoriesFromPlayData — entry point
 
 export function extractCategoriesFromPlayData(rawData: string): { korean: string; english: string }[] {
-  console.log("[v0] Extracting categories from play data")
+  // console.log("[v0] Extracting categories from play data")
 
   if (rawData.includes("<!DOCTYPE html") || rawData.includes("<html")) {
     console.error("[v0] Received HTML instead of play data - file not found or wrong path")
@@ -50,33 +50,33 @@ export function extractCategoriesFromPlayData(rawData: string): { korean: string
       if (match) {
         koreanName = match[1].trim()
         englishName = match[2].trim()
-        console.log(
-          `[v0] Section ${index}: Successfully extracted - Korean: "${koreanName}", English: "${englishName}"`,
-        )
+        // console.log(
+        //   `[v0] Section ${index}: Successfully extracted - Korean: "${koreanName}", English: "${englishName}"`,
+        // )
       } else {
         // 쉼표가 없는 경우 기존 방식 사용
         koreanName = rawCategoryName.trim()
         englishName = koreanName // fallback
-        console.log(
-          `[v0] Section ${index}: No comma found, using fallback - Korean: "${koreanName}", English: "${englishName}"`,
-        )
+        // console.log(
+        //   `[v0] Section ${index}: No comma found, using fallback - Korean: "${koreanName}", English: "${englishName}"`,
+        // )
       }
 
-      console.log(`[v0] Section ${index}: Raw category name: "${rawCategoryName}" (length: ${rawCategoryName.length})`)
-      console.log(`[v0] Section ${index}: Korean name: "${koreanName}", English name: "${englishName}"`)
+      // console.log(`[v0] Section ${index}: Raw category name: "${rawCategoryName}" (length: ${rawCategoryName.length})`)
+      // console.log(`[v0] Section ${index}: Korean name: "${koreanName}", English name: "${englishName}"`)
 
       if (koreanName && !categories.find((cat) => cat.korean === koreanName)) {
         categories.push({ korean: koreanName, english: englishName })
-        console.log(`[v0] Added category: Korean="${koreanName}", English="${englishName}"`)
+        // console.log(`[v0] Added category: Korean="${koreanName}", English="${englishName}"`)
       } else if (!koreanName) {
-        console.log(`[v0] Empty category name in section ${index}`)
+        // console.log(`[v0] Empty category name in section ${index}`)
       } else {
-        console.log(`[v0] Duplicate category name: "${koreanName}"`)
+        // console.log(`[v0] Duplicate category name: "${koreanName}"`)
       }
     }
   })
 
-  console.log("[v0] Extracted categories:", categories)
+  // console.log("[v0] Extracted categories:", categories)
   return categories
 }
 
@@ -207,11 +207,19 @@ export function parsePlayData(rawData: string): Record<string, AvailablePlayList
   return categories
 }
 
+// Minimal helper: loadCategoryData
+// For build/type-check purposes provide a simple exported function.
+// In the original project this may read parsed data from disk; here
+// we return an empty array as a safe default for tools that import it.
+export async function loadCategoryData(korean: string): Promise<AvailablePlayList[]> {
+  return []
+}
+
 // Component: parseDetailedActivity — entry point
 
 export function parseDetailedActivity(rawData: string, activityNumber: number): DetailedActivity | null {
-  console.log(`[v0] DEBUG: parseDetailedActivity called for activity ${activityNumber}`)
-  console.log(`[v0] DEBUG: Raw data length: ${rawData.length}`)
+  // console.log(`[v0] DEBUG: parseDetailedActivity called for activity ${activityNumber}`)
+  // console.log(`[v0] DEBUG: Raw data length: ${rawData.length}`)
 
   // Normalize line endings for Windows/Mac compatibility
   let normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -222,13 +230,12 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   // 각 활동은 "Number X:" 패턴으로 시작하고, 다음 "Number Y:" 또는 파일 끝까지가 하나의 활동
   const numberPattern = /^Number (\d+):\s/gm
   const matches = [...normalizedData.matchAll(numberPattern)]
-
-  console.log(`[v0] DEBUG: Found ${matches.length} activity sections`)
+  // console.log(`[v0] DEBUG: Found ${matches.length} activity sections`)
 
   // 요청된 활동 번호 찾기
   const targetMatch = matches.find((match) => Number.parseInt(match[1]) === activityNumber)
   if (!targetMatch) {
-    console.log(`[v0] DEBUG: No matching activity found for number ${activityNumber}`)
+    // console.log(`[v0] DEBUG: No matching activity found for number ${activityNumber}`)
     return null
   }
 
@@ -241,9 +248,8 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   const activityText = normalizedData.substring(startIndex, endIndex).trim()
   // 빈 줄만 제거하되, 공백이 있는 줄은 유지 (줄바꿈 보존)
   const lines = activityText.split("\n").filter((line) => line.trim() !== "")
-
-  console.log(`[v0] DEBUG: Found matching activity section with ${lines.length} lines`)
-  console.log(`[v0] DEBUG: Activity section content:`, lines.slice(0, 10).join(" | "))
+  // console.log(`[v0] DEBUG: Found matching activity section with ${lines.length} lines`)
+  // console.log(`[v0] DEBUG: Activity section content:`, lines.slice(0, 10).join(" | "))
 
   const result: any = {
     number: activityNumber,
@@ -255,19 +261,18 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
   const saveCurrentSection = () => {
     if (currentSection && currentSection.title) {
       let contentLines = currentSection.lines.filter((line: string) => line.trim() !== "---");
-      // 증거 기반: contentLines와 content를 모두 로그로 남김
-      console.log(`[증거] Section "${currentSection.title}" contentLines(before join):`, JSON.stringify(contentLines));
+      // console.log(`[증거] Section "${currentSection.title}" contentLines(before join):`, JSON.stringify(contentLines));
       currentSection.content = contentLines.join("\n"); // .trim() 제거: 앞/뒤 공백 보존
-      console.log(`[증거] Section "${currentSection.title}" content(after join):`, JSON.stringify(currentSection.content));
+      // console.log(`[증거] Section "${currentSection.title}" content(after join):`, JSON.stringify(currentSection.content));
       // 난이도 조절 섹션은 content가 비어있어도 저장 (Level 정보는 별도로 파싱됨)
       const isDifficulty = currentSection.title.includes("난이도") || currentSection.title.includes("조절");
-      console.log(`[v0] DEBUG: saveCurrentSection - title: "${currentSection.title}", isDifficulty: ${isDifficulty}, lines: ${contentLines.length}, content: "${currentSection.content}"`);
+      // console.log(`[v0] DEBUG: saveCurrentSection - title: "${currentSection.title}", isDifficulty: ${isDifficulty}, lines: ${contentLines.length}, content: "${currentSection.content}"`);
       // 섹션 저장 (난이도 조절은 항상 저장)
       if (isDifficulty || currentSection.content || contentLines.length > 0) {
         result.sections.push(currentSection);
-        console.log(`[v0] DEBUG: ✓ Saved section "${currentSection.title}"`);
+        // console.log(`[v0] DEBUG: ✓ Saved section "${currentSection.title}"`);
       } else {
-        console.log(`[v0] DEBUG: ✗ Skipped section "${currentSection.title}" (empty and not difficulty)`);
+        // console.log(`[v0] DEBUG: ✗ Skipped section "${currentSection.title}" (empty and not difficulty)`);
       }
     }
   }
@@ -313,14 +318,14 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
         const beforeRemoval = initialContent
         // 하이픈(-), en-dash(–), em-dash(—) 모두 매칭, 시작 위치와 관계없이
         initialContent = initialContent.replace(/\([0-9.]+[-–—][0-9.]+개월\)\s*/g, '')
-        console.log(`[v0] DEBUG: 난이도 조절 섹션 - 연령 제거: "${beforeRemoval}" → "${initialContent}"`)
+        // console.log(`[v0] DEBUG: 난이도 조절 섹션 - 연령 제거: "${beforeRemoval}" → "${initialContent}"`)
       }
 
       currentSection = {
         title: title,
         lines: initialContent ? [initialContent] : [],
       }
-      console.log(`[v0] DEBUG: Starting new section "${title}" with initial content: "${initialContent}"`)
+      // console.log(`[v0] DEBUG: Starting new section "${title}" with initial content: "${initialContent}"`)
     } else if (currentSection) {
       // 이미지 포맷: [이미지, 파일명.png, scale=1.0, "설명 텍스트"]
       const imageMatch = trimmedLine.match(/^\[이미지,\s*([^,\]]+),\s*scale=([\d.]+),\s*"([^"]*)"\s*\]$/);
@@ -331,11 +336,11 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
           scale: parseFloat(imageMatch[2]),
           desc: imageMatch[3].trim()
         });
-        console.log(`[v0] DEBUG: 이미지 파싱(라인 삽입): src=${imageMatch[1].trim()}, scale=${imageMatch[2]}, desc=${imageMatch[3].trim()}`);
+        // console.log(`[v0] DEBUG: 이미지 파싱(라인 삽입): src=${imageMatch[1].trim()}, scale=${imageMatch[2]}, desc=${imageMatch[3].trim()}`);
       } else if (trimmedLine) {
         // 원본 line을 사용하여 들여쓰기 보존 (앞의 공백 유지)
         currentSection.lines.push(line)
-        console.log(`[v0] DEBUG: Adding to section "${currentSection.title}": "${line}"`)
+        // console.log(`[v0] DEBUG: Adding to section "${currentSection.title}": "${line}"`)
       }
     }
   }
@@ -378,10 +383,10 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
     }
   })
 
-  console.log(
-    `[v0] DEBUG: Final parsed result with ${result.sections.length} sections:`,
-    result.sections.map((s: any) => s.title),
-  )
+  // console.log(
+  //   `[v0] DEBUG: Final parsed result with ${result.sections.length} sections:`,
+  //   result.sections.map((s: any) => s.title),
+  // )
 
   return result as DetailedActivity
 }

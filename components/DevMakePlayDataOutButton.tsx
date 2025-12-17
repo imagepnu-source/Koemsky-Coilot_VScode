@@ -1,4 +1,4 @@
-import { makePlayDataOut } from "./lib/make_play_data_out";
+import { makePlayDataOut } from "@/lib/make_play_data_out";
 
 // 개발자용: play_data_OUT.txt 생성 버튼 (임시)
 export function DevMakePlayDataOutButton() {

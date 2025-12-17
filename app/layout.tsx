@@ -20,7 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* PWA / 홈 화면 아이콘 설정 */}
         <link rel="manifest" href="/manifest.webmanifest" />
         <meta name="theme-color" content="#0ea5e9" />
-        {/* iOS 전체 화면 & 아이콘 */}
+        {/* Android / 일반 브라우저 전체 화면 */}
+        <meta name="mobile-web-app-capable" content="yes" />
+        {/* iOS 전체 화면 & 아이콘 (여전히 일부 기기에서 사용) */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Komensky" />
@@ -37,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <head>
           <link rel="manifest" href="/manifest.webmanifest" />
           <meta name="theme-color" content="#0ea5e9" />
+          <meta name="mobile-web-app-capable" content="yes" />
           <meta name="apple-mobile-web-app-capable" content="yes" />
           <meta name="apple-mobile-web-app-status-bar-style" content="default" />
           <meta name="apple-mobile-web-app-title" content="Komensky" />

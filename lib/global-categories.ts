@@ -62,9 +62,6 @@ export function initializeGlobalCategories(): void {
   })
 
   isInitialized = true
-  console.log("[v0] GLOBAL_CATEGORIES: Initialized with", GLOBAL_CATEGORY_COUNT, "categories")
-  console.log("[v0] GLOBAL_CATEGORIES: Korean names:", GLOBAL_KOREAN_NAMES)
-  console.log("[v0] GLOBAL_CATEGORIES: English names:", GLOBAL_ENGLISH_NAMES)
 }
 
 // Global category accessors

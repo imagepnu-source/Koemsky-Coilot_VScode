@@ -28,9 +28,10 @@ export function ChildProfileDialog({ open, onOpenChange, onSave, initialProfile 
   const [birthDate, setBirthDate] = useState(
     initialProfile?.birthDate ? initialProfile.birthDate.toISOString().split("T")[0] : "",
   )
+  const [isSaving, setIsSaving] = useState(false)
 
-  const handleSave = () => {
-    if (!name.trim() || !birthDate) return
+  const handleSave = async () => {
+    if (!name.trim() || !birthDate || isSaving) return
 
     const profile: ChildProfile = {
       name: name.trim(),
@@ -38,8 +39,16 @@ export function ChildProfileDialog({ open, onOpenChange, onSave, initialProfile 
       biologicalAge: 0, // Will be calculated
     }
 
-    saveChildProfile(profile)
-    onSave(profile)
+    setIsSaving(true)
+    try {
+      saveChildProfile(profile)
+      onSave(profile)
+    } catch (error) {
+      console.error('[ChildProfileDialog] Error saving child profile:', error)
+      alert('아이 정보 저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Render: UI markup starts here
@@ -47,7 +56,12 @@ export function ChildProfileDialog({ open, onOpenChange, onSave, initialProfile 
   return (
 
   <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        style={{
+          position: 'relative',
+        }}
+      >
         <DialogHeader>
           <DialogTitle>아이 정보 입력</DialogTitle>
         </DialogHeader>
@@ -68,9 +82,35 @@ export function ChildProfileDialog({ open, onOpenChange, onSave, initialProfile 
             <Input id="birthDate" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
           </div>
 
-          <Button onClick={handleSave} className="w-full" disabled={!name.trim() || !birthDate}>
+          <Button onClick={handleSave} className="w-full" disabled={!name.trim() || !birthDate || isSaving}>
             저장
           </Button>
+          {isSaving && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 50,
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  padding: '16px 24px',
+                  borderRadius: 12,
+                  boxShadow: '0 10px 25px rgba(0, 0, 0, 0.25)',
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                아이 정보 Upload 중...
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

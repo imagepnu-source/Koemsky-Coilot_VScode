@@ -4,12 +4,23 @@
 // File: lib/storage-category.ts
 // Note: Comments are for maintainability; no runtime behavior change.
 // ---------------------------------------------------------
-import type { PlayRecord, CategoryRecord, PlayCategory, GraphDataEntry } from "./types"
+import type { PlayRecord, CategoryRecord, PlayCategory, GraphDataEntry, ChildProfile } from "./types"
 import { getCategoryStorageKey } from "./storage-core"
 import { loadChildProfile } from "./storage-core"
+import { supabase } from "@/lib/supabaseClient"
 // import { loadCategoryDataSync } from "./data-parser"
 import { CalculateDevAgeFromPlayData, computeAchieveMonthOfThePlay } from "@/lib/development-calculator"
 import { calculateCategoryDevelopmentalAgeFromRecord } from "@/lib/storage-core"
+
+// Child-specific CategoryRecord storage key helper
+export function getChildCategoryStorageKey(categoryName: PlayCategory, profile?: ChildProfile): string {
+  const p = profile ?? loadChildProfile()
+  const safeName = (p.name || "").trim() || "아기"
+  const birth = p.birthDate instanceof Date ? p.birthDate : new Date(p.birthDate)
+  const datePart = birth.toISOString().split("T")[0]
+  const childId = `${safeName}_${datePart}`
+  return `komensky_category_record_${childId}_${categoryName}`
+}
 
 
 // Component: saveCategoryRecord — entry point
@@ -19,12 +30,52 @@ export function saveCategoryRecord(categoryRecord: CategoryRecord): void {
     return;
   }
   
-  const storageKey = `komensky_category_record_${categoryRecord.categoryName}`
+  const profile = loadChildProfile()
+  const storageKey = getChildCategoryStorageKey(categoryRecord.categoryName, profile)
 
   try {
     localStorage.setItem(storageKey, JSON.stringify(categoryRecord))
   } catch (error) {
     console.error(`[v0] SAVE_CATEGORY: ERROR - Failed to save: ${error}`)
+  }
+
+  // Supabase에 동기화하여 PC/모바일 간 놀이 Level 기록을 공유
+  try {
+    if (supabase) {
+      const profile = loadChildProfile()
+      const safeName = (profile.name || "").trim() || "아기"
+      const datePart = profile.birthDate.toISOString().split("T")[0]
+      const childId = `${safeName}_${datePart}`
+
+      ;(async () => {
+        try {
+          // Supabase에는 아이마다 달라지는 진행 상황만 저장하고,
+          // provided_playList 등 콘텐츠 정의는 로컬/파일에서 관리합니다.
+          const remoteRecord = {
+            playData: categoryRecord.playData,
+            graphData: categoryRecord.graphData,
+            categoryDevelopmentalAge: categoryRecord.categoryDevelopmentalAge,
+          }
+
+          const payload = {
+            child_id: childId,
+            category: categoryRecord.categoryName,
+            record: remoteRecord,
+          }
+
+          const { error } = await supabase
+            .from("category_records")
+            .upsert(payload)
+          if (error) {
+            console.warn("[storage-category] Failed to sync category_record to Supabase:", error)
+          }
+        } catch (err) {
+          console.warn("[storage-category] Unexpected Supabase error:", err)
+        }
+      })()
+    }
+  } catch (err) {
+    console.warn("[storage-category] Unexpected error preparing Supabase sync:", err)
   }
 }
 
@@ -36,35 +87,32 @@ export function loadCategoryRecord(categoryName: PlayCategory): CategoryRecord |
   }
   
   try {
-    const storageKey = `komensky_category_record_${categoryName}`
-    const data = localStorage.getItem(storageKey)
+    const profile = loadChildProfile()
+    const newKey = getChildCategoryStorageKey(categoryName, profile)
+    const legacyKey = `komensky_category_record_${categoryName}`
+
+    let data = localStorage.getItem(newKey)
+
+    // 마이그레이션: 예전 키에만 있으면 새 키로 옮깁니다.
+    if (!data) {
+      const legacy = localStorage.getItem(legacyKey)
+      if (legacy) {
+        data = legacy
+        try {
+          localStorage.setItem(newKey, legacy)
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     if (!data) {
-      console.log(`[v0] No existing record for ${categoryName}, creating empty record`)
       return createEmptyCategoryRecord(categoryName)
     }
 
     const record = JSON.parse(data)
 
-    console.log(
-      `[v0] DEBUG: Loading ${categoryName} - provided_playList length: ${record.provided_playList?.length || 0}`,
-    )
-
     // No longer auto-load from detail files. If provided_playList is empty, leave as is.
-    if (!record.provided_playList || record.provided_playList.length === 0) {
-      console.log(`[v0] provided_playList is empty for ${categoryName}, skipping auto-load (detail file logic removed)`)
-      // Optionally, could load from play_data.txt at a higher level and inject here.
-    }
-
-    if (record.provided_playList && record.provided_playList.length > 0) {
-      // 첫 3개 항목의 나이 정보 확인
-      const sampleItems = record.provided_playList.slice(0, 3)
-      sampleItems.forEach((item: any, index: number) => {
-        console.log(
-          `[v0] DEBUG: provided_playList[${index}] - number: ${item.number}, minAge: ${item.minAge}, maxAge: ${item.maxAge}`,
-        )
-      })
-    }
 
     // Convert date strings back to Date objects
     record.playData = record.playData// List render — each item must have stable key
@@ -85,9 +133,6 @@ export function loadCategoryRecord(categoryName: PlayCategory): CategoryRecord |
       ) {
         const playActivity = record.provided_playList.find((p: any) => p.number === playData.playNumber)
         if (playActivity) {
-          console.log(
-            `[v0] Fixing PlayData #${playData.playNumber}: setting minAge=${playActivity.minAge}, maxAge=${playActivity.maxAge}`,
-          )
           playData.minAge = playActivity.minAge
           playData.maxAge = playActivity.maxAge
           needsSave = true
@@ -114,7 +159,6 @@ export function loadCategoryRecord(categoryName: PlayCategory): CategoryRecord |
     }
 
     if (needsSave) {
-      console.log(`[v0] Saving updated record for ${categoryName}`)
       saveCategoryRecord(record)
     }
 
@@ -186,8 +230,6 @@ export function updateCategoryPlayData(
   checked: boolean,
 ): void {
   try {
-    console.log(`[v0] DEBUG: updateCategoryPlayData called with category: "${category}"`)
-
     const categoryRecord = loadCategoryRecord(category)
     if (!categoryRecord) {
       console.error(`[v0] No category record found for ${category}`)
@@ -243,6 +285,19 @@ export function updateCategoryPlayData(
 
     // 변경 저장
     saveCategoryRecord(categoryRecord)
+
+    // 그래프 및 기타 UI가 최신 데이터를 반영하도록 재계산 이벤트 송신
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("recalculateCategory", {
+            detail: { category },
+          }),
+        )
+      } catch {
+        // 이벤트 실패는 무시 (저장은 이미 완료됨)
+      }
+    }
   } catch (error) {
     console.error(`[v0] Error updating category play data for ${category}:`, error)
   }

@@ -3,12 +3,13 @@ import React from 'react';
 import type {
   AllCfg, BoxCfg, SmallBoxCfg, FontCfg, LevelBadgeCfg, AgeBadgeCfg, DropdownCfg
 } from '@/lib/ui-design';
-import { loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS, asFont } from '@/lib/ui-design';
+import { loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS, asFont, saveGlobalUIDesignCfg } from '@/lib/ui-design';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import type { BoxStyle, TextStyle } from "@/lib/ui-types";
 
 export default function UIDesignDialog() {
   const [open, setOpen] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<string>('list');
   // cfg is managed by reducer below (loadUIDesignCfg used in initializer)
   type Action =
     | { type: 'SET'; key: keyof AllCfg; value: any }
@@ -39,6 +40,29 @@ export default function UIDesignDialog() {
 
   const update = <K extends keyof AllCfg>(k: K, v: AllCfg[K]) =>
     dispatch({ type: 'SET', key: k, value: v })
+
+  // 마지막으로 사용한 탭을 localStorage에 저장/복원
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = window.localStorage.getItem('komensky_ui_design_last_tab');
+      if (stored === 'list' || stored === 'detail' || stored === 'graph') {
+        setActiveTab(stored);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('komensky_ui_design_last_tab', value);
+    } catch {
+      // ignore
+    }
+  };
 
   // --- ADD: modal position/size + drag state/handlers (insert if missing) ---
   const [modalSize, setModalSize] = React.useState({ width: 0, height: 0 });
@@ -95,14 +119,31 @@ export default function UIDesignDialog() {
   };
   // --- END ADD ---
   React.useEffect(() => {
+    // 1) 편집 중에는 즉시 CSS 변수 적용 (현재 기기 미리보기)
     applyUIDesignCSS(cfg);
+
+    // 2) localStorage에도 바로 반영해서, loadUIDesignCfg()가 항상 최신 편집 값을 읽도록 유지
+    //    (Save 버튼은 Supabase로 "전역 저장"만 담당)
+    saveUIDesignCfg(cfg);
+
+    // 3) 그래프 등 클라이언트 컴포넌트가 즉시 다시 그리도록 미리보기 이벤트(선택적)를 전파
     if (typeof window !== 'undefined') {
-      saveUIDesignCfg(cfg);
-      window.dispatchEvent(new Event('ui-design-updated'));
+      window.dispatchEvent(new Event('ui-design-preview-updated'));
     }
   }, [cfg]);
-  const persist = () => {
+
+  const persist = async () => {
+    // 1) 이 브라우저(localStorage)에 저장
     saveUIDesignCfg(cfg);
+
+    // 2) Supabase 전역 UI 설정에도 동기화하여, 다른 기기(모바일 등)에서 같은 UI를 사용
+    try {
+      await saveGlobalUIDesignCfg(cfg);
+    } catch (e) {
+      console.warn('[UIDesignDialog] Failed to save global UI settings', e);
+    }
+
+    // 3) 다른 컴포넌트에게 UI 설정이 갱신되었음을 알림
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('ui-design-updated'));
     }
@@ -151,7 +192,7 @@ export default function UIDesignDialog() {
 
             {/* body: keep all existing Tabs/sections unchanged, but make body scrollable */}
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <Tabs defaultValue="list">
+              <Tabs value={activeTab} onValueChange={handleTabChange}>
                 <TabsList>
                   <TabsTrigger value="list">Play List</TabsTrigger>
                   <TabsTrigger value="detail">Play Detail</TabsTrigger>
@@ -274,14 +315,171 @@ export default function UIDesignDialog() {
                   </div>
                 </TabsContent>
 
-                {/* ✅ 새로 추가: Graph 탭 (자리표시자) */}
+                {/* ✅ Graph 탭: Radar / 시간축 그래프 UI 조정 */}
                 <TabsContent value="graph">
                   <div className="w-full h-[calc(70vh-56px-56px)] overflow-auto px-4 py-3">
                     <div className="space-y-4">
-                      <div className="p-3 rounded-lg border">
-                        <div className="font-semibold mb-2">그래프 영역 (미리보기)</div>
-                        <div className="text-xs text-gray-500">
-                          연결 대기: 그래프 스타일 편집 섹션 (예: 축/선/포인트/범례). cfg.graph* 키가 확인되면 에디터로 교체.
+                      {/* Radar 그래프 UI Box */}
+                      <div className="p-3 rounded-lg border bg-white">
+                        <div className="font-semibold mb-2">Radar 그래프 UI</div>
+                        <div className="text-xs text-gray-500 mb-3">
+                          상단 레이더 그래프 탭 안의 폭/간격/폰트를 조절합니다.
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <LabeledNumber
+                            label="Container 폭 (%)"
+                            value={cfg.radarGraph?.containerWidthPercent ?? 100}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              containerWidthPercent: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="세로 크기 (%)"
+                            value={cfg.radarGraph?.containerHeightPercent ?? 100}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              containerHeightPercent: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="Y Offset (px)"
+                            value={cfg.radarGraph?.containerYOffset ?? 16}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              containerYOffset: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="Tab Font (px)"
+                            value={cfg.radarGraph?.tabFontSize ?? 14}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              tabFontSize: n,
+                            })}
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <LabeledNumber
+                            label="Title Font (px)"
+                            value={cfg.radarGraph?.titleFontSize ?? 16}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              titleFontSize: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="축 라벨 (px)"
+                            value={cfg.radarGraph?.axisLabelFontSize ?? 13}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              axisLabelFontSize: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="축 눈금 (px)"
+                            value={cfg.radarGraph?.axisTickFontSize ?? 13}
+                            onChange={n=>update('radarGraph', {
+                              ...(cfg.radarGraph || {}),
+                              axisTickFontSize: n,
+                            })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* 시간축 그래프 UI Box */}
+                      <div className="p-3 rounded-lg border bg-white">
+                        <div className="font-semibold mb-2">시간축 그래프 UI</div>
+                        <div className="text-xs text-gray-500 mb-3">
+                          "발달 그래프 - 모든 카테고리" 제목과 기간/축 폰트를 조절합니다.
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <LabeledNumber
+                            label="Title Font (px)"
+                            value={cfg.timeAxisGraph?.titleFontSize ?? 16}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              titleFontSize: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="Legend Line (%)"
+                            value={cfg.timeAxisGraph?.legendLineHeightPercent ?? 120}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              legendLineHeightPercent: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="Title-기간바 Gap (px)"
+                            value={cfg.timeAxisGraph?.titleSliderGap ?? 5}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              titleSliderGap: n,
+                            })}
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <LabeledNumber
+                            label="Legend 행 간격 (px)"
+                            value={cfg.timeAxisGraph?.legendRowGapPx ?? 4}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              legendRowGapPx: n,
+                            })}
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <LabeledNumber
+                            label="시작/종료 Font (px)"
+                            value={cfg.timeAxisGraph?.rangeLabelFontSize ?? 12}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              rangeLabelFontSize: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="선택된 기간 Font (px)"
+                            value={cfg.timeAxisGraph?.selectedRangeFontSize ?? 12}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              selectedRangeFontSize: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="축 Title Font (px)"
+                            value={cfg.timeAxisGraph?.axisTitleFontSize ?? 12}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              axisTitleFontSize: n,
+                            })}
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <LabeledNumber
+                            label="축 눈금 Font (px)"
+                            value={cfg.timeAxisGraph?.axisTickFontSize ?? 11}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              axisTickFontSize: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="그래프 rect 가로 크기 (%)"
+                            value={cfg.timeAxisGraph?.rectWidthPercent ?? 100}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              rectWidthPercent: n,
+                            })}
+                          />
+                          <LabeledNumber
+                            label="가로축제목-눈금 간격 (px)"
+                            value={cfg.timeAxisGraph?.xTitleBottomGap ?? 5}
+                            onChange={n=>update('timeAxisGraph', {
+                              ...(cfg.timeAxisGraph || {}),
+                              xTitleBottomGap: n,
+                            })}
+                          />
                         </div>
                       </div>
                     </div>

@@ -7,7 +7,8 @@
 "use client"
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { generateCategoryColors } from "@/lib/types"
-import type { ChildProfile } from "@/lib/types"
+import type { ChildProfile, PlayCategory } from "@/lib/types"
+import { loadCategoryRecord, saveCategoryRecord } from "@/lib/storage-category"
 import { Slider } from "@/components/ui/slider"
 
 interface TimeAxisGraphProps {
@@ -31,6 +32,19 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
   const tooltipDebounceRef = useRef<NodeJS.Timeout | null>(null)
 
   const tooltipDebugCountRef = useRef(0)
+
+  // UI 디자인(폰트, rect 폭 등)이 변경될 때마다 그래프를 다시 그리기 위한 버전 카운터
+  const [uiDesignVersion, setUiDesignVersion] = useState(0)
+
+  // DevAge 상위 N개 평균에 사용할 N 값 (1~10, 기본 3, localStorage에 저장)
+  const [nDevAvg, setNDevAvg] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("timeAxisGraph_nDevAvg")
+      const n = saved ? Number.parseInt(saved, 10) : 3
+      if (!Number.isNaN(n) && n >= 1 && n <= 10) return n
+    }
+    return 3
+  })
 
   // Effect: runs on mount/update — keep deps accurate to avoid extra renders
 
@@ -67,6 +81,13 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
     loadCategories()
   }, [])
 
+  const childId = useMemo(() => {
+    const safeName = (childProfile.name || "").trim() || "아기"
+    const birth = childProfile.birthDate instanceof Date ? childProfile.birthDate : new Date(childProfile.birthDate)
+    const datePart = birth.toISOString().split("T")[0]
+    return `${safeName}_${datePart}`
+  }, [childProfile])
+
   const birthDate = new Date(childProfile.birthDate)
   const today = new Date()
 
@@ -77,7 +98,7 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
 
     allCategories.forEach((category) => {
       try {
-        const categoryKey = `komensky_category_record_${category}`
+        const categoryKey = `komensky_category_record_${childId}_${category}`
         const categoryRecordStr = localStorage.getItem(categoryKey)
 
         if (categoryRecordStr) {
@@ -98,7 +119,7 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
     })
 
     return maxDate
-  }, [allCategories, birthDate])
+  }, [allCategories, birthDate, childId])
 
   const maxPlayDate = useMemo(() => getMaxPlayDate(), [getMaxPlayDate])
 
@@ -129,7 +150,6 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
   useEffect(() => {
     const handleCategoryRecalculation = (event: CustomEvent<{ category: string }>) => {
       const category = event.detail.category
-      console.log(`[TimeAxisGraph] Clearing cache for category: ${category}`)
       setCategoryGraphDataCache((prevCache) => {
         const newCache = new Map(prevCache)
         newCache.delete(category)
@@ -140,6 +160,28 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
     window.addEventListener("recalculateCategory", handleCategoryRecalculation as EventListener)
     return () => {
       window.removeEventListener("recalculateCategory", handleCategoryRecalculation as EventListener)
+    }
+  }, [])
+
+  // 아이가 바뀌면 그래프 캐시 전체를 비웁니다.
+  useEffect(() => {
+    setCategoryGraphDataCache(new Map())
+  }, [childId])
+
+  // UIDesignDialog 에서 폰트/폭 등의 설정이 바뀔 때마다 그래프를 다시 그리도록 이벤트 리스너 등록
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleUIDesignUpdate = () => {
+      setUiDesignVersion((v) => v + 1)
+    }
+
+    window.addEventListener("ui-design-preview-updated", handleUIDesignUpdate)
+    window.addEventListener("ui-design-updated", handleUIDesignUpdate)
+
+    return () => {
+      window.removeEventListener("ui-design-preview-updated", handleUIDesignUpdate)
+      window.removeEventListener("ui-design-updated", handleUIDesignUpdate)
     }
   }, [])
 
@@ -160,39 +202,57 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
       let graphData = categoryGraphDataCache.get(category)
       if (!graphData) {
         try {
-          const categoryKey = `komensky_category_record_${category}`
+          const categoryKey = `komensky_category_record_${childId}_${category}`
           const categoryRecordStr = localStorage.getItem(categoryKey)
-          
-          console.log(`[TimeAxisGraph] Loading data for category: "${category}", key: "${categoryKey}"`)
-          
+
           if (!categoryRecordStr) {
             console.warn(`[TimeAxisGraph] No data found for key: ${categoryKey}`)
             return []
           }
-
           const categoryRecord = JSON.parse(categoryRecordStr)
-          console.log(`[TimeAxisGraph] Parsed data for ${category}:`, {
-            playDataCount: categoryRecord.playData?.length || 0,
-            graphDataCount: categoryRecord.graphData?.length || 0
-          })
-          
+
           if (!categoryRecord.graphData || categoryRecord.graphData.length === 0) {
-            console.warn(`[TimeAxisGraph] Empty graphData for ${category}`)
             return []
           }
-
+          // graphData를 기본으로 사용하되, 놀이 제목이 없는 경우 playData에서 찾아와 보강
           graphData = categoryRecord.graphData as any[]
-          console.log(`[TimeAxisGraph] Loaded ${graphData.length} graph entries for ${category}`)
+
+          if (Array.isArray(categoryRecord.playData)) {
+            const titleLookup: Record<string, string> = {}
+            categoryRecord.playData.forEach((p: any) => {
+              const key = String(p.playNumber)
+              const titleCandidate =
+                p.playTitle ||
+                p.title ||
+                p.play_title ||
+                p.playname ||
+                p.name ||
+                ""
+              if (key && titleCandidate) {
+                titleLookup[key] = titleCandidate
+              }
+            })
+
+            graphData = (graphData as any[]).map((g: any) => {
+              if (!g.playTitle) {
+                const key = String(g.playNumber)
+                const t = titleLookup[key]
+                if (t) {
+                  return { ...g, playTitle: t }
+                }
+              }
+              return g
+            })
+          }
+          
         } catch (error) {
           console.error(`[TimeAxisGraph] Error loading data for ${category}:`, error)
           return []
         }
-      } else {
-        console.log(`[TimeAxisGraph] Using cached data for ${category}: ${graphData.length} entries`)
       }
       return graphData ?? []  // ← 항상 배열 보장
     },
-    [categoryGraphDataCache],
+    [categoryGraphDataCache, childId],
 )
 
   const handleTooltipShow = useCallback((x: number, y: number, data: any) => {
@@ -204,10 +264,7 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
       tooltipRef.current = { x, y, data }
       setTooltipVisible(true)
 
-      if (tooltipDebugCountRef.current < 10) {
-        console.log(`[v0] TOOLTIP_SHOW #${tooltipDebugCountRef.current + 1}:`, { x, y, data })
-        tooltipDebugCountRef.current++
-      }
+      // Debug logging disabled in production
     }, 100)
   }, [])
 
@@ -220,10 +277,7 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
       tooltipRef.current = null
       setTooltipVisible(false)
 
-      if (tooltipDebugCountRef.current < 10) {
-        console.log(`[v0] TOOLTIP_HIDE #${tooltipDebugCountRef.current + 1}`)
-        tooltipDebugCountRef.current++
-      }
+      // Debug logging disabled in production
     }, 100)
   }, [])
 
@@ -240,8 +294,19 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
     ) => {
       const chartWidth = chartDimensions.width
       const chartHeight = chartDimensions.height
-      const margin = { top: 20, right: 50, bottom: 50, left: 50 }
-      const plotWidth = chartWidth - margin.left - margin.right
+      const margin = { top: 20, right: 2, bottom: 60, left: 50 }
+      // 그래프 rect 가로 크기 (%): CSS 변수에서 읽어와 plotWidth 비율 조정
+      let basePlotWidth = chartWidth - margin.left - margin.right
+      let widthScale = 1
+      if (typeof window !== "undefined") {
+        const root = window.getComputedStyle(document.documentElement)
+        const raw = root.getPropertyValue("--kp-timeaxis-rect-width-percent").trim()
+        const n = raw.endsWith("%") ? Number(raw.replace("%", "")) : Number(raw || "0")
+        if (!Number.isNaN(n) && n > 0) {
+          widthScale = n / 100
+        }
+      }
+      const plotWidth = basePlotWidth * widthScale
       const plotHeight = chartHeight - margin.top - margin.bottom
       const [xMin, xMax] = xAxisRange
       const [yMin, yMax] = yAxisRange
@@ -299,33 +364,7 @@ export function TimeAxisGraph({ childProfile }: TimeAxisGraphProps) {
       birthPoint.x = margin.left + ((birthPoint.timestamp - xMin) / (xMax - xMin)) * plotWidth
       birthPoint.y = margin.top + plotHeight - ((birthPoint.achievedMonth - yMin) / (yMax - yMin)) * plotHeight
 
-      // Debug log for 대근육 category
-      if (category === "대근육") {
-        console.log(`[v0] GRAPH_ALL_POINTS: ${category}`, {
-          totalPoints: allPoints.length,
-          points: allPoints// List render — each item must have stable key
-.map((p) => ({
-            playNumber: p.originalData.playNumber,
-            date: new Date(p.timestamp).toISOString(),
-            devAge: p.achievedMonth,
-            x: p.x,
-            y: p.y,
-            isBirth: p.isBirthPoint,
-            inRange: p.timestamp >= xMin && p.timestamp <= xMax,
-          })),
-        })
-        console.log(`[v0] GRAPH_POINTS_COUNT: ${category} has ${allPoints.length} points`)
-        allPoints.forEach((p, index) => {
-          console.log(`[v0] GRAPH_POINT_${index}: ${category} #${p.originalData.playNumber}`, {
-            date: new Date(p.timestamp).toISOString(),
-            devAge: p.achievedMonth,
-            x: Math.round(p.x),
-            y: Math.round(p.y),
-            isBirth: p.isBirthPoint,
-            inXRange: p.timestamp >= xMin && p.timestamp <= xMax,
-          })
-        })
-      }
+      // Debug logging for specific categories has been disabled
 
       if (allPoints.length === 0) return
 
@@ -390,57 +429,115 @@ for (const p of actualPoints) {
 // ▲▲▲ 여기까지 교체 ▲▲▲
 
 
-  // === DevAge trend (top-3 running max average) ===
+  // === DevAge trend (top-N (nDevAvg) running max average), with boundary interpolation ===
   try {
     // actualPoints: already built above as time-ordered raw data points
-    const sortedActual = actualPoints.slice().sort((a,b) => a.timestamp - b.timestamp);
-    const devPoints: { timestamp: number; devAge: number; x: number; y: number }[] = [];
-    const top3: number[] = [];
+    const sortedActual = actualPoints.slice().sort((a, b) => a.timestamp - b.timestamp)
+    const devBasePoints: any[] = []
+    const topN: number[] = []
+    const N = Math.max(1, Math.min(10, nDevAvg))
 
+    // 1) 전체 구간에 대해 devAge(상위 3개 평균) 곡선의 기준 점들을 계산
     for (const p of sortedActual) {
-      const v = Number(p.achievedMonth) || 0;
-      top3.push(v);
-      top3.sort((a,b) => b - a);
-      if (top3.length > 3) top3.length = 3;
+      const v = Number(p.achievedMonth) || 0
+      topN.push(v)
+      topN.sort((a, b) => b - a)
+      if (topN.length > N) topN.length = N
 
-      const avg = top3.reduce((s, n) => s + n, 0) / top3.length;
+      const avg = topN.reduce((s, n) => s + n, 0) / topN.length
 
-      if (p.timestamp >= xMin && p.timestamp <= xMax) {
-        const x = margin.left + ((p.timestamp - xMin) / (xMax - xMin)) * plotWidth;
-        const y = margin.top + plotHeight - ((avg - yMin) / (yMax - yMin)) * plotHeight;
-        devPoints.push({ timestamp: p.timestamp, devAge: avg, x, y });
+      const xAll = margin.left + ((p.timestamp - xMin) / (xMax - xMin)) * plotWidth
+      const yAll = margin.top + plotHeight - ((avg - yMin) / (yMax - yMin)) * plotHeight
+
+      devBasePoints.push({ timestamp: p.timestamp, devAge: avg, x: xAll, y: yAll })
+    }
+
+    if (devBasePoints.length >= 2) {
+      // 헬퍼: 경계 양쪽에 있는 devBasePoint를 찾아 선형 보간
+      const lastBefore = (t: number) => {
+        const arr = devBasePoints.filter((p) => p.timestamp < t)
+        return arr.length ? arr[arr.length - 1] : null
+      }
+      const firstAfterEq = (t: number) => devBasePoints.find((p) => p.timestamp >= t) || null
+
+      const lerpNum = (a: number, b: number, r: number) => a + (b - a) * r
+
+      const devVisible: Array<{ timestamp: number; x: number; y: number; isBoundary: boolean }> = []
+
+      // 2) 왼쪽 경계(xMin)에서 devAge 곡선과 만나는 가상 점 추가
+      {
+        const prev = lastBefore(xMin)
+        const next = firstAfterEq(xMin)
+        if (prev && next && next.timestamp !== prev.timestamp) {
+          const r = (xMin - prev.timestamp) / (next.timestamp - prev.timestamp)
+          const y = lerpNum(prev.y, next.y, r)
+          const bx = margin.left // 항상 왼쪽 경계선과 만나도록 고정
+          devVisible.push({ timestamp: xMin, x: bx, y, isBoundary: true })
+        }
+      }
+
+      // 3) 슬라이더 범위 안의 실제 devAge 기준 점들 추가 (여기는 Circle을 그림)
+      devBasePoints.forEach((p) => {
+        if (p.timestamp >= xMin && p.timestamp <= xMax) {
+          devVisible.push({ timestamp: p.timestamp, x: p.x, y: p.y, isBoundary: false })
+        }
+      })
+
+      // 4) 오른쪽 경계(xMax)에서 devAge 곡선과 만나는 가상 점 추가
+      {
+        const prevArr = devBasePoints.filter((p) => p.timestamp <= xMax)
+        const prev = prevArr.length ? prevArr[prevArr.length - 1] : null
+        const next = devBasePoints.find((p) => p.timestamp > xMax) || null
+        if (prev && next && next.timestamp !== prev.timestamp) {
+          const r = (xMax - prev.timestamp) / (next.timestamp - prev.timestamp)
+          const y = lerpNum(prev.y, next.y, r)
+          const bx = margin.left + plotWidth // 항상 오른쪽 경계선과 만나도록 고정
+          devVisible.push({ timestamp: xMax, x: bx, y, isBoundary: true })
+        }
+      }
+
+      // 시간 순으로 정렬
+      devVisible.sort((a, b) => a.timestamp - b.timestamp)
+
+      if (devVisible.length >= 2) {
+        // 5) devAge 추세선을 슬라이더 경계까지 이어서 그리기
+        const dPath =
+          "M " +
+          devVisible[0].x +
+          " " +
+          devVisible[0].y +
+          devVisible
+            .slice(1)
+            .map((p) => " L " + p.x + " " + p.y)
+            .join("")
+
+        const devPath = document.createElementNS("http://www.w3.org/2000/svg", "path")
+        devPath.setAttribute("d", dPath)
+        devPath.setAttribute("fill", "none")
+        devPath.setAttribute("stroke", color)
+        devPath.setAttribute("stroke-width", (lineWidth + 0.5).toString())
+        devPath.setAttribute("opacity", String(0.9 * currentOpacity))
+        svgElement.appendChild(devPath)
+
+        // 6) 실제 devAge 샘플 지점만 속이 찬 원으로 표시 (경계 가상점에는 원 없음)
+        devVisible.forEach((pt) => {
+          if (pt.isBoundary) return
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+          c.setAttribute("cx", pt.x.toString())
+          c.setAttribute("cy", pt.y.toString())
+          c.setAttribute("r", Math.max(2, circleSize).toString())
+          c.setAttribute("fill", color)
+          c.setAttribute("stroke", color)
+          c.setAttribute("stroke-width", "0.5")
+          c.setAttribute("opacity", String(currentOpacity))
+          svgElement.appendChild(c)
+        })
       }
     }
-
-    if (devPoints.length >= 2) {
-      const dPath = "M " + devPoints[0].x + " " + devPoints[0].y +
-        devPoints.slice(1).map(p => " L " + p.x + " " + p.y).join("");
-      const devPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      devPath.setAttribute("d", dPath);
-      devPath.setAttribute("fill", "none");
-      devPath.setAttribute("stroke", color);
-      devPath.setAttribute("stroke-width", (lineWidth + 0.5).toString());
-      devPath.setAttribute("opacity", String(0.9 * currentOpacity));
-      svgElement.appendChild(devPath);
-
-      // devAge points are filled circles
-      devPoints.forEach((pt) => {
-        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        c.setAttribute("cx", pt.x.toString());
-        c.setAttribute("cy", pt.y.toString());
-        c.setAttribute("r", Math.max(2, circleSize).toString());
-        c.setAttribute("fill", color);
-        c.setAttribute("stroke", color);
-        c.setAttribute("stroke-width", "0.5");
-        c.setAttribute("opacity", String(currentOpacity));
-        svgElement.appendChild(c);
-      });
-    }
   } catch (e) {
-    console.warn("[devAge] compute/draw error:", e);
+    console.warn("[devAge] compute/draw error:", e)
   }
   // === end DevAge trend ===
-// (disabled) original connecting line removed; keep hollow circles only
 visiblePoints.forEach((point) => {
         if (point.isActualData && point.timestamp >= xMin - EPS && point.timestamp <= xMax + EPS) {
           const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle")
@@ -475,12 +572,87 @@ visiblePoints.forEach((point) => {
             handleTooltipHide()
           })
 
+          // 오른쪽 마우스 버튼으로 날짜 수정 (가상 Sample이 아니라 실제 Sample만 대상으로 함)
+          circle.addEventListener("contextmenu", (e) => {
+            e.preventDefault()
+            if (!point.originalData) return
+
+            try {
+              const currentDate =
+                point.originalData.achieveDate instanceof Date
+                  ? point.originalData.achieveDate
+                  : new Date(point.originalData.achieveDate)
+              const currentDateStr = Number.isNaN(currentDate.getTime())
+                ? new Date(point.timestamp).toISOString().split("T")[0]
+                : currentDate.toISOString().split("T")[0]
+
+              const input = window.prompt("새 달성 날짜를 입력하세요 (YYYY-MM-DD)", currentDateStr)
+              if (!input) {
+                // 취소 시에도 말풍선을 자연스럽게 닫아준다.
+                handleTooltipHide()
+                return
+              }
+
+              const newDate = new Date(input)
+              if (Number.isNaN(newDate.getTime())) {
+                window.alert("유효한 날짜 형식이 아닙니다. 예: 2024-03-15")
+                return
+              }
+
+              // 중앙 저장소 형태(CategoryRecord)를 불러와서 수정 후 saveCategoryRecord 로 저장하면
+              // localStorage + Supabase 모두에 동일하게 반영됩니다.
+              const categoryName = category as PlayCategory
+              const record = loadCategoryRecord(categoryName)
+              if (!record) return
+
+              const playNumber: number = point.originalData.playNumber
+
+              // 1) 그래프 데이터(최고 레벨 점)의 날짜를 갱신
+              if (Array.isArray(record.graphData)) {
+                record.graphData = record.graphData.map((g) =>
+                  g.playNumber === playNumber ? { ...g, achieveDate: newDate } : g,
+                )
+              }
+
+              // 2) 해당 놀이의 PlayData 안에서도 최고 레벨의 achievedDates 를 갱신
+              const play = record.playData.find((p) => p.playNumber === playNumber)
+              if (play) {
+                const highestLevel: number = point.originalData.achievedLevel_Highest || 0
+                if (highestLevel > 0 && highestLevel <= play.achievedDates.length) {
+                  play.achievedDates[highestLevel - 1] = newDate
+                } else {
+                  // highestLevel 정보를 찾지 못한 경우, 최초로 달성된 레벨 하나라도 있으면 그 레벨 날짜를 수정
+                  const idx = play.achievedDates.findIndex((d) => d != null)
+                  if (idx >= 0) {
+                    play.achievedDates[idx] = newDate
+                  }
+                }
+              }
+
+              // 3) 카테고리 레코드를 저장하면 localStorage + Supabase 양쪽에 반영됨
+              saveCategoryRecord(record)
+
+              // 해당 카테고리 그래프를 즉시 다시 계산/그리도록 이벤트 발생
+              window.dispatchEvent(
+                new CustomEvent("recalculateCategory", {
+                  detail: { category },
+                }),
+              )
+
+              // 날짜 변경이 완료되면 말풍선을 자동으로 닫는다.
+              handleTooltipHide()
+            } catch (err) {
+              console.error("[TimeAxisGraph] 날짜 수정 중 오류:", err)
+              window.alert("날짜를 저장하는 중 오류가 발생했습니다.")
+            }
+          })
+
           circle.setAttribute("opacity", String(currentOpacity));
         svgElement.appendChild(circle)
         }
       })
     },
-    [chartDimensions, selectedCategory, handleTooltipShow, handleTooltipHide, birthDate],
+    [chartDimensions, selectedCategory, handleTooltipShow, handleTooltipHide, birthDate, nDevAvg, uiDesignVersion],
   )
 
   const interpolateAtBoundary = (points: any[], boundaryTime: number, side: "left" | "right") => {
@@ -553,18 +725,33 @@ visiblePoints.forEach((point) => {
   useEffect(() => {
     if (!svgRef.current || allCategories.length === 0) return
 
-    console.log("[v0] GRAPH: Rendering chart", {
-      visibleCategories: visibleCategories.length,
-      selectedCategory,
-      rangeStart,
-      rangeEnd,
-    })
-
     const svgElement = svgRef.current
     const chartWidth = chartDimensions.width
     const chartHeight = chartDimensions.height
-    const margin = { top: 20, right: 50, bottom: 50, left: 50 }
-    const plotWidth = chartWidth - margin.left - margin.right
+    const margin = { top: 20, right: 2, bottom: 60, left: 50 }
+    // 그래프 rect 가로 크기 (%) 및 가로축 눈금-제목 간격(px)을 CSS 변수에서 읽어옴
+    let basePlotWidth = chartWidth - margin.left - margin.right
+    let widthScale = 1
+    let xLabelGap = 5
+    if (typeof window !== "undefined") {
+      const root = window.getComputedStyle(document.documentElement)
+
+      const rawWidth = root.getPropertyValue("--kp-timeaxis-rect-width-percent").trim()
+      const nWidth = rawWidth.endsWith("%") ? Number(rawWidth.replace("%", "")) : Number(rawWidth || "0")
+      if (!Number.isNaN(nWidth) && nWidth > 0) {
+        widthScale = nWidth / 100
+      }
+
+      const rawGap = root.getPropertyValue("--kp-timeaxis-xlabel-bottom-gap").trim()
+      if (rawGap) {
+        const cleaned = rawGap.endsWith("px") ? rawGap.replace("px", "") : rawGap
+        const nGap = Number(cleaned || "0")
+        if (!Number.isNaN(nGap) && nGap >= 0) {
+          xLabelGap = nGap
+        }
+      }
+    }
+    const plotWidth = basePlotWidth * widthScale
     const plotHeight = chartHeight - margin.top - margin.bottom
 
     svgElement.innerHTML = ""
@@ -691,7 +878,7 @@ visiblePoints.forEach((point) => {
       label.setAttribute("x", (margin.left - 10).toString())
       label.setAttribute("y", (y + 3).toString())
       label.setAttribute("text-anchor", "end")
-      label.setAttribute("font-size", "12")
+      label.setAttribute("font-size", "var(--kp-timeaxis-axis-tick-font-size, 12px)")
       label.setAttribute("fill", "#666")
       label.textContent = Math.round(value).toString()
       svgElement.appendChild(label)
@@ -701,13 +888,15 @@ visiblePoints.forEach((point) => {
     yLabel.setAttribute("x", "15")
     yLabel.setAttribute("y", (margin.top + plotHeight / 2).toString())
     yLabel.setAttribute("text-anchor", "middle")
-    yLabel.setAttribute("font-size", "12")
+    yLabel.setAttribute("font-size", "var(--kp-timeaxis-axis-title-font-size, 12px)")
     yLabel.setAttribute("fill", "#666")
     yLabel.setAttribute("transform", `rotate(-90, 15, ${margin.top + plotHeight / 2})`)
     yLabel.textContent = "발달 나이 (개월)"
     svgElement.appendChild(yLabel)
 
     const xTickCount = 5
+    const axisY = margin.top + plotHeight
+    const xTickLabelBaseY = axisY + 17 // 축에서 라벨까지 5px 더 아래로
     for (let i = 0; i <= xTickCount; i++) {
       const tickTime = xMin + (i / xTickCount) * (xMax - xMin)
       const tickDate = new Date(tickTime)
@@ -724,20 +913,35 @@ visiblePoints.forEach((point) => {
 
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text")
       label.setAttribute("x", x.toString())
-      label.setAttribute("y", (chartHeight - 25).toString())
+      label.setAttribute("y", xTickLabelBaseY.toString())
       label.setAttribute("text-anchor", "middle")
-      label.setAttribute("font-size", "11")
+      label.setAttribute("font-size", "var(--kp-timeaxis-axis-tick-font-size, 11px)")
       label.setAttribute("fill", "#666")
-      label.textContent = tickDate.toLocaleDateString("ko-KR", {
-        year: "2-digit",
-        month: "short",
-      })
+
+      const yy = tickDate.getFullYear() % 100
+      const mm = String(tickDate.getMonth() + 1).padStart(2, "0")
+
+      const yearLine = document.createElementNS("http://www.w3.org/2000/svg", "tspan")
+      yearLine.setAttribute("x", x.toString())
+      yearLine.setAttribute("dy", "0")
+      yearLine.textContent = `${yy}년`
+
+      const monthLine = document.createElementNS("http://www.w3.org/2000/svg", "tspan")
+      monthLine.setAttribute("x", x.toString())
+      monthLine.setAttribute("dy", "12")
+      monthLine.textContent = `${mm}월`
+
+      label.appendChild(yearLine)
+      label.appendChild(monthLine)
       svgElement.appendChild(label)
     }
     // 아래 내용 Display 하기 전에 위와의 견격을 조금 주려면?
     const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text")
     xLabel.setAttribute("x", (margin.left + plotWidth / 2).toString())
-    xLabel.setAttribute("y", (chartHeight - 5).toString())
+    // 눈금(month) 텍스트 두 번째 줄 기준으로 간격을 더해 제목 위치 계산
+    const xTickLabelBottomY = xTickLabelBaseY + 12
+    let xLabelY = xTickLabelBottomY + xLabelGap
+    xLabel.setAttribute("y", xLabelY.toString())
     xLabel.setAttribute("text-anchor", "middle")
     xLabel.setAttribute("font-size", "12")
     xLabel.setAttribute("fill", "#666")
@@ -788,6 +992,7 @@ visiblePoints.forEach((point) => {
     categoryColors,
     loadGraphDataForCategory,
     xAxisDomain,
+    uiDesignVersion,
   ])
 
   const handleLegendClick = (category: string) => {
@@ -839,7 +1044,9 @@ visiblePoints.forEach((point) => {
         // 최대 너비 제한 제거: 컨테이너 전체 너비 사용 (양쪽 패딩 32px만 제외)
         const chartWidth = containerWidth - 32
         // 높이는 최소 375px, 최대 500px, 기본은 너비의 50% (16:9 비율보다 약간 낮음)
-        const chartHeight = Math.max(375, Math.min(500, chartWidth * 0.5))
+        const baseHeight = Math.max(375, Math.min(500, chartWidth * 0.5))
+        // ViewBox(실제 SVG 높이)를 세로로 20px 추가 확보
+        const chartHeight = baseHeight + 20
 
         setChartDimensions({ width: chartWidth, height: chartHeight })
       }
@@ -853,13 +1060,7 @@ visiblePoints.forEach((point) => {
   // Effect: runs on mount/update — keep deps accurate to avoid extra renders
 
   useEffect(() => {
-    if (tooltipDebugCountRef.current < 10) {
-      console.log(`[v0] TOOLTIP_STATE_CHANGE #${tooltipDebugCountRef.current + 1}:`, {
-        isVisible: tooltipVisible,
-        data: tooltipRef.current?.data,
-      })
-      tooltipDebugCountRef.current++
-    }
+    // Debug tooltip state changes are disabled by default
   }, [tooltipVisible])
 
   // Render: UI markup starts here
@@ -869,14 +1070,21 @@ visiblePoints.forEach((point) => {
   <div className="w-full">    {
     //   배경색 외부 지정 필요
   }
-      <div className="flex justify-center mb-4"> {// 색상 별도 지정 필요
+      <div
+        className="flex justify-center"
+        style={{ marginBottom: "var(--kp-timeaxis-title-slider-gap, 5px)" }}
+      > {// 색상 별도 지정 필요
       }
-        <h3 className="text-default font-bold">발달 그래프 - 모든 카테고리</h3>
+        <h3
+          className="text-default font-bold"
+          style={{ fontSize: "var(--kp-timeaxis-title-font-size, 16px)" }}
+        >
+          발달 그래프 - 모든 카테고리
+        </h3>
       </div>
 
       <div className="mb-4">
         <div className="flex items-center gap-4 mb-2">
-          <label className="text-sm font-medium">기간 선택:</label>
           <div className="flex-1 px-4">
             <Slider
               value={[tempRangeStart, tempRangeEnd]}
@@ -888,7 +1096,10 @@ visiblePoints.forEach((point) => {
             />
           </div>
         </div>
-        <div className="flex justify-between text-sm text-gray-600 px-4">
+        <div
+          className="flex justify-between text-sm text-gray-600 px-4"
+          style={{ fontSize: "var(--kp-timeaxis-range-label-font-size, 12px)" }}
+        >
           <span>
             시작: {new Date(birthDate.getTime() + tempRangeStart * 24 * 60 * 60 * 1000).toLocaleDateString("ko-KR")}
           </span>
@@ -896,16 +1107,46 @@ visiblePoints.forEach((point) => {
             종료: {new Date(birthDate.getTime() + tempRangeEnd * 24 * 60 * 60 * 1000).toLocaleDateString("ko-KR")}
           </span>
         </div>
-        <div className="text-center text-sm text-gray-600 mt-1">
-          선택된 기간: {tempRangeEnd - tempRangeStart}일 ({Math.round((tempRangeEnd - tempRangeStart) / 30.44)}개월)
+        <div
+          className="flex items-center justify-between text-sm text-gray-600 mt-1 px-4"
+          style={{ fontSize: "var(--kp-timeaxis-selected-range-font-size, 12px)" }}
+        >
+          <div>
+            선택된 기간: {tempRangeEnd - tempRangeStart}일 ({Math.round((tempRangeEnd - tempRangeStart) / 30.44)}개월)
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-700">
+            <span>nDevAvg:</span>
+            <select
+              className="border rounded px-1 py-0.5 text-sm bg-white"
+              value={nDevAvg}
+              onChange={(e) => {
+                const v = Number.parseInt(e.target.value, 10)
+                if (!Number.isNaN(v) && v >= 1 && v <= 10) {
+                  setNDevAvg(v)
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem("timeAxisGraph_nDevAvg", String(v))
+                  }
+                }
+              }}
+            >
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
-      <div ref={containerRef} className="bg-white border rounded-lg p-4">   {// color 외부 지정 필요
+      <div ref={containerRef} className="bg-white border rounded-lg p-2">   {// color 외부 지정 필요
         }
         {visibleCategories.length > 0 && (
           <>
-            <div className="flex items-center gap-4 mb-4 flex-wrap">
+            <div
+              className="flex items-center gap-4 mb-4 flex-wrap"
+              style={{ rowGap: "var(--kp-timeaxis-legend-row-gap, 4px)" }}
+            >
               {visibleCategories// List render — each item must have stable key
               //  7개중 4개 3개로 2줄에 render 필요, 가로 4칸으로 나누고, 윗 줄에 4개 아랫줄에 3개
                 .map((category) => (
@@ -926,6 +1167,7 @@ visiblePoints.forEach((point) => {
                     style={{
                       color: categoryColors[category] || "#666666",
                       opacity: selectedCategory === null || selectedCategory === category ? 1 : 0.3,
+                      lineHeight: "var(--kp-timeaxis-legend-line-height, 120%)",
                     }}
                   >
                     {category}
@@ -942,24 +1184,45 @@ visiblePoints.forEach((point) => {
                   height={chartDimensions.height}
                   viewBox={`0 0 ${chartDimensions.width} ${chartDimensions.height}`}
                   preserveAspectRatio="none"  
-                  style={{ display: "block", width: "100%", height: "auto" }}
+                  style={{ display: "block", width: "100%", height: "100%" }}
                   className="border"    
                 />
-                {tooltipVisible && tooltipRef.current && (
-                  <div
-                    className="absolute bg-white border border-gray-300 rounded shadow-lg p-2 text-xs pointer-events-none z-10"
-                    style={{
-                      left: `${tooltipRef.current.x + 10}px`,
-                      top: `${tooltipRef.current.y - 10}px`,
-                    }}
-                  >
-                    <div className="font-semibold text-primary">{tooltipRef.current.data.category}</div>
-                    <div>놀이 번호: {tooltipRef.current.data.playNumber}</div>
-                    <div>달성 레벨: {tooltipRef.current.data.achievedLevel_Highest}</div>
-                    <div>발달 나이: {tooltipRef.current.data.achievedMonth}개월</div>
-                    <div>날짜: {tooltipRef.current.data.date}</div>
-                  </div>
-                )}
+                {tooltipVisible && tooltipRef.current && (() => {
+                  const { x, y, data } = tooltipRef.current
+                  const title =
+                    (data &&
+                      (data.playTitle || data.title || data.play_title || data.playname || data.name)) ||
+                    ""
+
+                  // 오른쪽 끝 근처에서는 말풍선을 점의 왼쪽에 배치
+                  const isRightSide = x > chartDimensions.width * 0.7
+
+                  const style: { left?: string; right?: string; top: string } = {
+                    top: `${y - 10}px`,
+                  }
+
+                  if (isRightSide) {
+                    // 컨테이너 폭(chartDimensions.width)을 기준으로 right 기준 위치 계산
+                    const rightPx = Math.max(0, chartDimensions.width - x + 10)
+                    style.right = `${rightPx}px`
+                  } else {
+                    style.left = `${x + 10}px`
+                  }
+
+                  return (
+                    <div
+                      className="absolute bg-white border border-gray-300 rounded shadow-lg p-2 text-xs pointer-events-none z-10"
+                      style={style}
+                    >
+                      <div className="font-semibold text-primary">{data.category}</div>
+                      <div>놀이 번호: {data.playNumber}</div>
+                      {title && <div>놀이 제목: {title}</div>}
+                      <div>달성 레벨: {data.achievedLevel_Highest}</div>
+                      <div>발달 나이: {data.achievedMonth}개월</div>
+                      <div>날짜: {data.date}</div>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </>

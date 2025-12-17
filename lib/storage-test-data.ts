@@ -6,7 +6,7 @@
 // ---------------------------------------------------------
 import type { ChildProfile, CategoryAchievements } from "./types"
 import { getPlayCategoriesSync } from "./types"
-import { saveCategoryRecord, loadCategoryRecord, createEmptyCategoryRecord, generateGraphDataFromPlayData } from "./storage-category"
+import { saveCategoryRecord, loadCategoryRecord, createEmptyCategoryRecord, generateGraphDataFromPlayData, getChildCategoryStorageKey } from "./storage-category"
 import { computeAchieveMonthOfThePlay } from "./development-calculator"
 import { calculateCategoryDevelopmentalAgeFromRecord } from "./storage-core"
 
@@ -18,15 +18,15 @@ export function generateTestData(
   testDataCount = 10,
   progressCallback?: (category: string, total: number, index: number, phase: "generating" | "loading") => void,
 ): CategoryAchievements {
-  console.log("[v0] Starting test data generation...")
-  console.log(`[v0] Test data count per category: ${testDataCount}`)
+  // console.log("[v0] Starting test data generation...")
+  // console.log(`[v0] Test data count per category: ${testDataCount}`)
 
   const testAchievements: CategoryAchievements = {}
   const csvData: string[] = []
   csvData.push("Category,PlayNumber,PlayTitle,MinAge,MaxAge,AchievedLevel,DevelopmentAge,AchievedDate")
 
   const categories = getPlayCategoriesSync()
-  console.log(`[v0] Loaded ${categories.length} categories dynamically:`, categories)
+  // console.log(`[v0] Loaded ${categories.length} categories dynamically:`, categories)
 
   categories.forEach((category, categoryIndex) => {
     const categoryActivities = playData[category] || []
@@ -36,8 +36,7 @@ export function generateTestData(
     
     const actualCount = filteredActivities.length
     const targetCount = Math.min(testDataCount, actualCount)
-
-    console.log(`[v0] Processing category ${category}: ${actualCount} activities from total ${categoryActivities.length}`)
+    // console.log(`[v0] Processing category ${category}: ${actualCount} activities from total ${categoryActivities.length}`)
 
     if (progressCallback) {
       progressCallback(category, categories.length, categoryIndex, "generating")
@@ -75,9 +74,9 @@ export function generateTestData(
     }
 
     selectedActivities.sort((a, b) => a.developmentAge - b.developmentAge)
-    console.log(
-      `[v0] Step A completed for ${category}: Selected ${selectedActivities.length} activities, sorted by development age`,
-    )
+    // console.log(
+    //   `[v0] Step A completed for ${category}: Selected ${selectedActivities.length} activities, sorted by development age`,
+    // )
 
     const birthDateTime = childProfile.birthDate.getTime()
     const oneMonthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -91,10 +90,9 @@ export function generateTestData(
     const sortedDates = Array.from(randomDates)
       .map((time) => new Date(time * 1000 * 60 * 60))
       .sort((a, b) => a.getTime() - b.getTime())
-
-    console.log(
-      `[v0] Step B completed for ${category}: Generated ${sortedDates.length} unique dates, sorted chronologically`,
-    )
+    // console.log(
+    //   `[v0] Step B completed for ${category}: Generated ${sortedDates.length} unique dates, sorted chronologically`,
+    // )
 
     const categoryAchievements: any[] = []
 
@@ -117,7 +115,7 @@ export function generateTestData(
       )
     })
 
-    console.log(`[v0] Step C completed for ${category}: Combined ${categoryAchievements.length} activities with dates`)
+    // console.log(`[v0] Step C completed for ${category}: Combined ${categoryAchievements.length} activities with dates`)
 
     testAchievements[category] = categoryAchievements
 
@@ -175,21 +173,21 @@ export function generateTestData(
     categoryRecord.categoryDevelopmentalAge = calculateCategoryDevelopmentalAgeFromRecord(categoryRecord)
 
     saveCategoryRecord(categoryRecord)
-    console.log(
-      `[v0] Saved CategoryRecord for ${category} with ${categoryRecord.playData.length} PlayData and ${categoryRecord.graphData.length} GraphData entries`,
-    )
+    // console.log(
+    //   `[v0] Saved CategoryRecord for ${category} with ${categoryRecord.playData.length} PlayData and ${categoryRecord.graphData.length} GraphData entries`,
+    // )
     
-    // Verify saved data immediately
-    const storageKey = `komensky_category_record_${category}`
+    // Verify saved data immediately (per-child key)
+    const storageKey = getChildCategoryStorageKey(category as any, childProfile)
     const savedData = localStorage.getItem(storageKey)
     if (savedData) {
       const parsed = JSON.parse(savedData)
-      console.log(`[v0] ✅ Verified storage for ${category}:`, {
-        key: storageKey,
-        playDataCount: parsed.playData?.length || 0,
-        graphDataCount: parsed.graphData?.length || 0,
-        categoryAge: parsed.categoryDevelopmentalAge
-      })
+      // console.log(`[v0] ✅ Verified storage for ${category}:`, {
+      //   key: storageKey,
+      //   playDataCount: parsed.playData?.length || 0,
+      //   graphDataCount: parsed.graphData?.length || 0,
+      //   categoryAge: parsed.categoryDevelopmentalAge
+      // })
     } else {
       console.error(`[v0] ❌ Failed to verify storage for ${category} - key: ${storageKey}`)
     }
@@ -201,9 +199,9 @@ export function generateTestData(
 
   downloadCSV(csvData.join("\n"), `test_data_${new Date().toISOString().split("T")[0]}.csv`)
 
-  console.log(`[v0] Test data generation completed for ${Object.keys(testAchievements).length} categories`)
-  console.log(`[v0] Total test achievements generated: ${Object.values(testAchievements).flat().length}`)
-  console.log(`[v0] CSV file downloaded with ${csvData.length - 1} data rows`)
+  // console.log(`[v0] Test data generation completed for ${Object.keys(testAchievements).length} categories`)
+  // console.log(`[v0] Total test achievements generated: ${Object.values(testAchievements).flat().length}`)
+  // console.log(`[v0] CSV file downloaded with ${csvData.length - 1} data rows`)
 
   return testAchievements
 }
@@ -220,6 +218,5 @@ function downloadCSV(csvContent: string, filename: string) {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-
-  console.log(`[v0] CSV file "${filename}" download initiated`)
+  // console.log(`[v0] CSV file "${filename}" download initiated`)
 }

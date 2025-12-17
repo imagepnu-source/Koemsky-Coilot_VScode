@@ -239,8 +239,6 @@ function updateSaveStatus(message: string, isSaved = false, isError = false) {
 // --- Initialization ---
 async function initializeApp() {
   try {
-    console.log(`[v0] INITIALIZATION: Starting app initialization`)
-
     if (!appState.activitiesLoaded) {
       // Fetch and parse play_data.txt for available play list
       const response = await fetch('/play_data.txt');
@@ -274,22 +272,17 @@ async function initializeApp() {
     }
 
     // CategoryRecords logic remains unchanged
-    console.log(`[v0] CATEGORY_RECORD: Checking CategoryRecords for all categories`)
+    // console.log(`[v0] CATEGORY_RECORD: Checking CategoryRecords for all categories`)
     let needsRecordCreation = false
     for (const category of PLAY_CATEGORIES) {
       const existingRecord = loadCategoryRecord(category)
       if (!existingRecord || !existingRecord.graphData || existingRecord.graphData.length === 0) {
         needsRecordCreation = true
-        console.log(`[v0] CATEGORY_RECORD: Missing or empty CategoryRecord for ${category}`)
         break
       } else {
-        console.log(
-          `[v0] CATEGORY_RECORD: Found existing CategoryRecord for ${category} with ${existingRecord.graphData.length} GraphData entries`,
-        )
       }
     }
     if (needsRecordCreation) {
-      console.log(`[v0] CATEGORY_RECORD: Creating missing CategoryRecords and GraphData`)
       // Use the already loaded categoriesData from play_data.txt
       const categoriesData: Record<string, import("./lib/types").AvailablePlayList[]> = {};
       appState.activities.forEach((a) => {
@@ -306,7 +299,7 @@ async function initializeApp() {
       Object.entries(categoriesData).forEach(([categoryName, acts]) => {
         const category = categoryName as PlayCategory;
         const activities = acts as import("./lib/types").AvailablePlayList[];
-        console.log(`[v0] CATEGORY_RECORD: Creating new CategoryRecord for ${category}`);
+        // console.log(`[v0] CATEGORY_RECORD: Creating new CategoryRecord for ${category}`);
         const categoryRecord = createEmptyCategoryRecord(category);
         categoryRecord.provided_playList = activities;
         categoryRecord.playData = activities.map((activity) => ({
@@ -320,11 +313,10 @@ async function initializeApp() {
         categoryRecord.graphData = generateGraphDataFromPlayData(categoryRecord);
         categoryRecord.categoryDevelopmentalAge = calculateCategoryDevelopmentalAgeFromRecord(categoryRecord);
         saveCategoryRecord(categoryRecord);
-        console.log(`[v0] CATEGORY_RECORD: Saved CategoryRecord for ${category}`);
       });
-      console.log(`[v0] CATEGORY_RECORD: All CategoryRecords created and saved with GraphData`)
+      // console.log(`[v0] CATEGORY_RECORD: All CategoryRecords created and saved with GraphData`)
     } else {
-      console.log(`[v0] CATEGORY_RECORD: All CategoryRecords already exist, no creation needed`)
+      // console.log(`[v0] CATEGORY_RECORD: All CategoryRecords already exist, no creation needed`)
     }
 
     setupEventListeners()
@@ -341,8 +333,6 @@ function startApp() {
   updateChildInfoDisplay()
   renderCategoryTabs()
   selectTab(appState.selectedTab || PLAY_CATEGORIES[0])
-
-  console.log(`[v0] INITIALIZATION: Using existing developmental ages, no recalculation needed`)
 
   renderAllGraphs()
 }
@@ -671,9 +661,7 @@ function handleLevelToggle(activityId: string, level: number) {
 function performUpdateSequence(activityId: string) {
   const activity = appState.activities.find((a) => a.id === activityId)
   if (!activity) return
-
-  console.log(`[v0] CATEGORY_INDEPENDENCE: Level change in ${activity.category} - recalculating ONLY this category`)
-
+  
   recalculateSingleCategoryDevelopmentalAge(activity.category)
 
   updateChildInfoDisplay()
@@ -841,10 +829,6 @@ function getOverallDevelopmentalAge(): number {
   const categoryAges = PLAY_CATEGORIES.map((category) => getCategoryDevelopmentalAge(category))
   const sum = categoryAges.reduce((acc, age) => acc + age, 0)
   const average = sum / PLAY_CATEGORIES.length // Always divide by 7
-
-  console.log(`[v0] Overall development age calculation:`)
-  console.log(`[v0] - Category ages: [${categoryAges.map((age) => age.toFixed(1)).join(", ")}]`)
-  console.log(`[v0] - Sum: ${sum}, Average: ${average}`)
 
   return average
 }

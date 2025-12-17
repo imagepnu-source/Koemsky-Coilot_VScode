@@ -36,7 +36,7 @@ export function getCategoryStorageKeys(): Record<string, string> {
   return keys
 }
 
-// Component: saveChildProfile — entry point
+// Component: saveChildProfile — entry point (global, backward compatible)
 
 export function saveChildProfile(profile: ChildProfile): ChildProfile {
   const birthDate =
@@ -58,7 +58,30 @@ export function saveChildProfile(profile: ChildProfile): ChildProfile {
   return normalized;
 }
 
-// Component: loadChildProfile — entry point
+// Component: saveChildProfileForEmail — entry point (per-account child profile)
+
+export function saveChildProfileForEmail(email: string | null | undefined, profile: ChildProfile): ChildProfile {
+  const birthDate =
+    profile.birthDate instanceof Date ? profile.birthDate : new Date(profile.birthDate);
+  const normalized: ChildProfile = {
+    name: profile.name.trim(),
+    birthDate,
+    biologicalAge: calculateBiologicalAge(birthDate),
+  };
+
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    const suffix = (email || 'anonymous').toLowerCase();
+    const key = `komensky_child_profile_${suffix}`;
+    localStorage.setItem(key, JSON.stringify({
+      ...normalized,
+      birthDate: normalized.birthDate.toISOString(),
+    }));
+  }
+
+  return normalized;
+}
+
+// Component: loadChildProfile — entry point (global, backward compatible)
 
 export function loadChildProfile(): ChildProfile {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -87,6 +110,32 @@ export function loadChildProfile(): ChildProfile {
     birthDate,
     biologicalAge: calculateBiologicalAge(birthDate),
   };
+}
+
+// Component: loadChildProfileForEmail — entry point (per-account child profile)
+
+export function loadChildProfileForEmail(email: string | null | undefined): ChildProfile | null {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return null;
+  }
+
+  const suffix = (email || 'anonymous').toLowerCase();
+  const key = `komensky_child_profile_${suffix}`;
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const birthDate = new Date(parsed.birthDate);
+    return {
+      name: parsed.name,
+      birthDate,
+      biologicalAge: calculateBiologicalAge(birthDate),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // Component: saveLastSelectedTab — entry point
@@ -146,20 +195,12 @@ export const CATEGORY_STORAGE_KEYS = new Proxy({} as Record<string, string>, {
 
 
  export function calculateCategoryDevelopmentalAgeFromRecord(record: CategoryRecord): number {
-   console.log(`[v0] STORAGE_CORE: Using centralized calculation for category developmental age`)
+  // console.log(`[v0] STORAGE_CORE: Using centralized calculation for category developmental age`)
   const { devlopedAge, items } = CalculateDevAgeFromPlayData(record.playData)
   
   // 대근육 전용 디버그
   if (record.categoryName === "대근육") {
-    console.log(`[DEBUG] 대근육 발달나이 계산:`, {
-      총놀이수: record.playData.length,
-      체크된놀이수: items.length,
-      계산된발달나이: devlopedAge,
-      상위3개: items.slice(0, 3).sort((a,b) => b.AchieveMonthOfThePlay - a.AchieveMonthOfThePlay).map(i => ({
-        놀이번호: i.playNumber,
-        발달개월: i.AchieveMonthOfThePlay
-      }))
-    });
+    // 상세 디버그 로그는 필요시만 다시 추가합니다.
   }
   
   record.categoryDevelopmentalAge = devlopedAge

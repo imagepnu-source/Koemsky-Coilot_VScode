@@ -8,6 +8,8 @@
 // Public API used by components: FontCfg, DropdownCfg, AllCfg, asFont,
 // loadUIDesignCfg, saveUIDesignCfg, applyUIDesignCSS.
 
+import { supabase } from '@/lib/supabaseClient'
+
 export type FontCfg = {
   size?: number
   family?: string
@@ -66,6 +68,47 @@ export type ButtonCfg = {
   paddingY: number;
 }
 
+/** Graph (Radar / Time-axis) config */
+export type RadarGraphCfg = {
+  /** Graph Container width as % of viewport/page width (100 = full width) */
+  containerWidthPercent: number;
+  /** Graph Container height as % of base height (100 = default, 0~200 등) */
+  containerHeightPercent: number;
+  /** Y offset between Graph Container top and "발달 영역별 레이더 그래프" title (px) */
+  containerYOffset: number;
+  /** Tab font size for "레이더 그래프" / "시간축 그래프" (px) */
+  tabFontSize: number;
+  /** Radar graph title font size (px) */
+  titleFontSize: number;
+  /** Radar axis label font size (category names, px) */
+  axisLabelFontSize: number;
+  /** Radar radius tick number font size (px) */
+  axisTickFontSize: number;
+}
+
+export type TimeAxisGraphCfg = {
+  /** "발달 그래프 - 모든 카테고리" title font size (px) */
+  titleFontSize: number;
+  /** Legend 자동 줄바꿈 라인 간격 (%) */
+  legendLineHeightPercent: number;
+  /** Legend 행(row) 사이 간격 (px) */
+  legendRowGapPx: number;
+  /** Title 과 기간 선택 바 사이 간격 (px) */
+  titleSliderGap: number;
+  /** 시작/종료 날짜 라벨 폰트 크기 (px) */
+  rangeLabelFontSize: number;
+  /** "선택된 기간" 라벨 폰트 크기 (px) */
+  selectedRangeFontSize: number;
+  /** 가로·세로 축 Title 폰트 크기 (px) */
+  axisTitleFontSize: number;
+  /** 가로·세로 눈금 숫자 폰트 크기 (px) */
+  axisTickFontSize: number;
+  /** 그래프 rect 가로 크기 (svg 전체 폭 대비, %) */
+  rectWidthPercent: number;
+  /** 가로축 눈금 글씨와 가로축 제목 사이 간격 (px) */
+  xTitleBottomGap: number;
+}
+
 /** Detail (Play Detail) config */
 export type DetailCfg = {
   detailPanelBox: SmallBoxCfg;   // 최상위 패널
@@ -104,9 +147,14 @@ export type AllCfg = {
   ageBadgeIndent: number;   // Age Badge 왼쪽 여백 (가장 왼쪽과의 거리)
   activityIndent: number;   // Activity (번호+제목) 왼쪽 여백
 
+  // Graphs
+  radarGraph: RadarGraphCfg;
+  timeAxisGraph: TimeAxisGraphCfg;
+
 } & DetailCfg
 
 const STORAGE_KEY = 'komensky_ui_design_v2'
+const GLOBAL_UI_ID = 'global'
 const CURRENT_VERSION = '2.1' // 버전 관리
 
 // ---- defaults helpers ----
@@ -142,6 +190,29 @@ const defaults: AllCfg = {
   levelBadgeIndent: 0,    // Level Badge 오른쪽 여백 (가장 오른쪽과의 거리)
   ageBadgeIndent: 0,      // Age Badge 왼쪽 여백 (가장 왼쪽과의 거리)
   activityIndent: 8,      // Activity (번호+제목) 왼쪽 여백
+
+  // graph: radar + time-axis
+  radarGraph: {
+    containerWidthPercent: 100,
+    containerHeightPercent: 100,
+    containerYOffset: 16,
+    tabFontSize: 14,
+    titleFontSize: 16,
+    axisLabelFontSize: 13,
+    axisTickFontSize: 13,
+  },
+  timeAxisGraph: {
+    titleFontSize: 16,
+    legendLineHeightPercent: 120,
+    legendRowGapPx: 4,
+    titleSliderGap: 5,
+    rangeLabelFontSize: 12,
+    selectedRangeFontSize: 12,
+    axisTitleFontSize: 12,
+    axisTickFontSize: 11,
+    rectWidthPercent: 100,
+    xTitleBottomGap: 5,
+  },
 
   // detail (new)
   detailPanelBox: sbox('#FFFFFF', 1, 'rgba(0,0,0,0.12)', 12),
@@ -245,7 +316,7 @@ export function loadUIDesignCfg(): AllCfg {
     // 버전 체크 및 마이그레이션 로그
     const savedVersion = parsed._version || '1.0'
     if (savedVersion !== CURRENT_VERSION) {
-      console.log(`[ui-design] Migrating from v${savedVersion} to v${CURRENT_VERSION}`)
+      // console.log(`[ui-design] Migrating from v${savedVersion} to v${CURRENT_VERSION}`)
     }
     
     // Deep merge: 기본값을 기준으로 저장된 값을 병합
@@ -258,7 +329,7 @@ export function loadUIDesignCfg(): AllCfg {
     
     // 마이그레이션 후 자동 저장 (선택적)
     if (savedVersion !== CURRENT_VERSION) {
-      console.log('[ui-design] Auto-saving migrated settings')
+      // console.log('[ui-design] Auto-saving migrated settings')
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
       } catch (e) {
@@ -288,7 +359,7 @@ export function saveUIDesignCfg(cfg: AllCfg) {
     ;(merged as any)._savedAt = new Date().toISOString()
     
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
-    console.log(`[ui-design] Saved settings v${CURRENT_VERSION}`)
+    // console.log(`[ui-design] Saved settings v${CURRENT_VERSION}`)
     
     // Notify other components that UI design was updated
     try {
@@ -298,6 +369,79 @@ export function saveUIDesignCfg(cfg: AllCfg) {
     }
   } catch (e) {
     console.error('[ui-design] Save failed:', e)
+  }
+}
+
+/**
+ * fetchGlobalUIDesignCfg
+ * - Supabase의 ui_settings 테이블에서 전역 UI 설정을 읽어옵니다.
+ * - 레코드가 없거나 오류가 나면 null을 반환합니다.
+ * - 반환 시 defaults 와 deep merge 하여 항상 완전한 AllCfg 형태를 보장합니다.
+ */
+export async function fetchGlobalUIDesignCfg(): Promise<AllCfg | null> {
+  // 브라우저가 아니거나 Supabase 가 설정되지 않은 경우, 전역 설정 사용 안 함
+  if (typeof window === 'undefined' || !supabase) {
+    return null
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('ui_settings')
+      .select('settings')
+      .eq('id', GLOBAL_UI_ID)
+      .maybeSingle()
+
+    if (error) {
+      console.warn('[ui-design] Failed to fetch global UI settings from Supabase:', error)
+      return null
+    }
+
+    if (!data || !data.settings) {
+      return null
+    }
+
+    const merged = deepMergeWithDefaults(defaults, data.settings as Partial<AllCfg>)
+    ;(merged as any)._version = CURRENT_VERSION
+    ;(merged as any)._source = 'supabase-global'
+    return merged as AllCfg
+  } catch (e) {
+    console.warn('[ui-design] Unexpected error while fetching global UI settings:', e)
+    return null
+  }
+}
+
+/**
+ * saveGlobalUIDesignCfg
+ * - 현재 브라우저의 UI 설정을 Supabase ui_settings 테이블의 전역 레코드로 저장합니다.
+ * - 이 함수는 "지금 화면의 UI Set을 모든 사용자에게 강제로 적용"할 때 사용합니다.
+ */
+export async function saveGlobalUIDesignCfg(cfg: AllCfg): Promise<void> {
+  if (typeof window === 'undefined' || !supabase) {
+    throw new Error('Supabase 설정이 필요합니다. (환경 변수 확인)')
+  }
+
+  try {
+    const merged = deepMergeWithDefaults(defaults, cfg as any)
+    ;(merged as any)._version = CURRENT_VERSION
+    ;(merged as any)._savedAt = new Date().toISOString()
+
+    const { error } = await supabase
+      .from('ui_settings')
+      .upsert({
+        id: GLOBAL_UI_ID,
+        settings: merged,
+        updated_at: new Date().toISOString(),
+      })
+
+    if (error) {
+      console.error('[ui-design] Failed to save global UI settings to Supabase:', error)
+      throw error
+    }
+
+    // console.log('[ui-design] Saved global UI settings to Supabase')
+  } catch (e) {
+    console.error('[ui-design] Unexpected error while saving global UI settings:', e)
+    throw e
   }
 }
 
@@ -333,11 +477,39 @@ export function applyUIDesignCSS(cfg: AllCfg) {
   set('--kp-catag-weight', (cfg.catag?.bold ? '700' : '400'))
   set('--kp-catag-color', String(cfg.catag?.color ?? defaults.catag.color ?? '#111111'))
 
+  // Bridge: map header config to legacy --ui-* tokens used in globals.css
+  set('--ui-top-header-bg', String(cfg.topHeaderBox?.bg ?? defaults.topHeaderBox.bg))
+  set('--ui-top-header-padding', (cfg.topHeaderBox?.padding ?? defaults.topHeaderBox.padding) + 'px')
+  set('--ui-top-header-border-width', (cfg.topHeaderBox?.border?.width ?? defaults.topHeaderBox.border.width) + 'px')
+  set('--ui-top-header-border-color', String(cfg.topHeaderBox?.border?.color ?? defaults.topHeaderBox.border.color))
+
+  set('--ui-title-size', (cfg.title?.size ?? defaults.title.size) + 'px')
+  set('--ui-title-weight', cfg.title?.bold ? '700' : '400')
+  set('--ui-title-color', String(cfg.title?.color ?? defaults.title.color))
+
+  set('--ui-namebio-size', (cfg.namebio?.size ?? defaults.namebio.size) + 'px')
+  set('--ui-namebio-weight', cfg.namebio?.bold ? '700' : '400')
+  set('--ui-namebio-color', String(cfg.namebio?.color ?? defaults.namebio.color))
+
+  set('--ui-devage-size', (cfg.devage?.size ?? defaults.devage.size) + 'px')
+  set('--ui-devage-weight', cfg.devage?.bold ? '700' : '400')
+  set('--ui-devage-color', String(cfg.devage?.color ?? defaults.devage.color))
+
+  set('--ui-catag-size', (cfg.catag?.size ?? defaults.catag.size) + 'px')
+  set('--ui-catag-weight', cfg.catag?.bold ? '700' : '400')
+  set('--ui-catag-color', String(cfg.catag?.color ?? defaults.catag.color ?? '#111111'))
+
   // Play List Box
   set('--kp-play-list-bg', String(cfg.playListBox?.bg ?? defaults.playListBox.bg))
   set('--kp-play-list-padding', (cfg.playListBox?.padding ?? defaults.playListBox.padding) + 'px')
   set('--kp-play-list-border-width', (cfg.playListBox?.border?.width ?? defaults.playListBox.border.width) + 'px')
   set('--kp-play-list-border-color', String(cfg.playListBox?.border?.color ?? defaults.playListBox.border.color))
+
+  // Bridge: legacy list container tokens
+  set('--ui-list-bg', String(cfg.playListBox?.bg ?? defaults.playListBox.bg))
+  set('--ui-list-padding', (cfg.playListBox?.padding ?? defaults.playListBox.padding) + 'px')
+  set('--ui-list-border-width', (cfg.playListBox?.border?.width ?? defaults.playListBox.border.width) + 'px')
+  set('--ui-list-border-color', String(cfg.playListBox?.border?.color ?? defaults.playListBox.border.color))
 
   // Activity Box (small box)
   set('--kp-activity-box-bg', String(cfg.activityBox?.bg ?? defaults.activityBox.bg))
@@ -350,6 +522,14 @@ export function applyUIDesignCSS(cfg: AllCfg) {
   set('--kp-activity-weight', (cfg.activity?.bold ? '700' : '400'))
   set('--kp-activity-color', String(cfg.activity?.color ?? defaults.activity.color))
 
+  // Bridge: legacy activity font tokens (optional, for old components)
+  set('--ui-activity-num-size', (cfg.activity?.size ?? defaults.activity.size) + 'px')
+  set('--ui-activity-num-weight', cfg.activity?.bold ? '700' : '400')
+  set('--ui-activity-num-color', String(cfg.activity?.color ?? defaults.activity.color))
+  set('--ui-activity-title-size', (cfg.activity?.size ?? defaults.activity.size) + 'px')
+  set('--ui-activity-title-weight', cfg.activity?.bold ? '700' : '400')
+  set('--ui-activity-title-color', String(cfg.activity?.color ?? defaults.activity.color))
+
   // Level Badge
   set('--kp-level-badge-font-size', (cfg.levelBadge?.fontSize ?? defaults.levelBadge.fontSize) + 'px')
   set('--kp-level-badge-weight', cfg.levelBadge?.bold ? '700' : '400')
@@ -359,6 +539,13 @@ export function applyUIDesignCSS(cfg: AllCfg) {
   set('--kp-level-badge-radius', (cfg.levelBadge?.radius ?? defaults.levelBadge.radius) + 'px')
   set('--kp-level-badge-height', (cfg.levelBadge?.height ?? defaults.levelBadge.height) + 'px')
   set('--kp-level-badge-padding', `${cfg.levelBadge?.paddingY ?? defaults.levelBadge.paddingY}px ${cfg.levelBadge?.paddingX ?? defaults.levelBadge.paddingX}px`)
+
+  // Bridge: legacy level badge tokens (for [data-ui="level-badge"])
+  set('--ui-level-badge-height', (cfg.levelBadge?.height ?? defaults.levelBadge.height) + 'px')
+  set('--ui-level-badge-radius', (cfg.levelBadge?.radius ?? defaults.levelBadge.radius) + 'px')
+  set('--ui-level-badge-bg', String(cfg.levelBadge?.bg ?? defaults.levelBadge.bg))
+  set('--ui-level-badge-font-size', (cfg.levelBadge?.fontSize ?? defaults.levelBadge.fontSize) + 'px')
+  set('--ui-level-badge-font-weight', cfg.levelBadge?.bold ? '700' : '400')
 
   // Age Badge
   set('--kp-age-badge-font-size', (cfg.ageBadge?.fontSize ?? defaults.ageBadge.fontSize) + 'px')
@@ -371,6 +558,14 @@ export function applyUIDesignCSS(cfg: AllCfg) {
   set('--kp-age-badge-height', (cfg.ageBadge?.height ?? defaults.ageBadge.height) + 'px')
   set('--kp-age-badge-padding', `${cfg.ageBadge?.paddingY ?? defaults.ageBadge.paddingY}px ${cfg.ageBadge?.paddingX ?? defaults.ageBadge.paddingX}px`)
   set('--kp-age-badge-width', (cfg.ageBadge?.width ?? defaults.ageBadge.width) + 'px')
+
+  // Bridge: legacy age badge tokens (for [data-ui="age-badge"])
+  set('--ui-age-badge-font-size', (cfg.ageBadge?.fontSize ?? defaults.ageBadge.fontSize) + 'px')
+  set('--ui-age-badge-font-weight', cfg.ageBadge?.bold ? '700' : '400')
+  set('--ui-age-badge-color', String(cfg.ageBadge?.color ?? defaults.ageBadge.color))
+  set('--ui-age-badge-bg', String(cfg.ageBadge?.bg ?? defaults.ageBadge.bg))
+  set('--ui-age-badge-border-width', (cfg.ageBadge?.borderWidth ?? defaults.ageBadge.borderWidth) + 'px')
+  set('--ui-age-badge-border-color', String(cfg.ageBadge?.borderColor ?? defaults.ageBadge.borderColor))
   
   // List Indents
   set('--kp-level-badge-indent', (cfg.levelBadgeIndent ?? defaults.levelBadgeIndent) + 'px')
@@ -474,4 +669,28 @@ export function applyUIDesignCSS(cfg: AllCfg) {
   set('--kp-safety-body-weight', (cfg.safetyBody?.bold ? '700' : '400'))
   set('--kp-safety-body-color', String(cfg.safetyBody?.color ?? defaults.safetyBody.color))
   set('--kp-safety-body-indent', (cfg.safetyBody?.indent ?? defaults.safetyBody.indent ?? 10) + 'px')
+
+  // Graph: Radar
+  const radar = cfg.radarGraph ?? defaults.radarGraph
+  set('--kp-graph-container-width-percent', (radar.containerWidthPercent ?? defaults.radarGraph.containerWidthPercent) + '%')
+  set('--kp-graph-container-y-offset', (radar.containerYOffset ?? defaults.radarGraph.containerYOffset) + 'px')
+  set('--kp-graph-tab-font-size', (radar.tabFontSize ?? defaults.radarGraph.tabFontSize) + 'px')
+  set('--kp-radar-title-font-size', (radar.titleFontSize ?? defaults.radarGraph.titleFontSize) + 'px')
+  set('--kp-radar-axis-label-font-size', (radar.axisLabelFontSize ?? defaults.radarGraph.axisLabelFontSize) + 'px')
+  set('--kp-radar-axis-tick-font-size', (radar.axisTickFontSize ?? defaults.radarGraph.axisTickFontSize) + 'px')
+  const hPercent = radar.containerHeightPercent ?? defaults.radarGraph.containerHeightPercent
+  set('--kp-radar-container-height-percent', String(hPercent))
+
+  // Graph: Time-axis
+  const timeAxis = cfg.timeAxisGraph ?? defaults.timeAxisGraph
+  set('--kp-timeaxis-title-font-size', (timeAxis.titleFontSize ?? defaults.timeAxisGraph.titleFontSize) + 'px')
+  set('--kp-timeaxis-legend-line-height', (timeAxis.legendLineHeightPercent ?? defaults.timeAxisGraph.legendLineHeightPercent) + '%')
+  set('--kp-timeaxis-legend-row-gap', (timeAxis.legendRowGapPx ?? defaults.timeAxisGraph.legendRowGapPx) + 'px')
+  set('--kp-timeaxis-title-slider-gap', (timeAxis.titleSliderGap ?? defaults.timeAxisGraph.titleSliderGap) + 'px')
+  set('--kp-timeaxis-range-label-font-size', (timeAxis.rangeLabelFontSize ?? defaults.timeAxisGraph.rangeLabelFontSize) + 'px')
+  set('--kp-timeaxis-selected-range-font-size', (timeAxis.selectedRangeFontSize ?? defaults.timeAxisGraph.selectedRangeFontSize) + 'px')
+  set('--kp-timeaxis-axis-title-font-size', (timeAxis.axisTitleFontSize ?? defaults.timeAxisGraph.axisTitleFontSize) + 'px')
+  set('--kp-timeaxis-axis-tick-font-size', (timeAxis.axisTickFontSize ?? defaults.timeAxisGraph.axisTickFontSize) + 'px')
+  set('--kp-timeaxis-rect-width-percent', (timeAxis.rectWidthPercent ?? defaults.timeAxisGraph.rectWidthPercent) + '%')
+  set('--kp-timeaxis-xlabel-bottom-gap', (timeAxis.xTitleBottomGap ?? defaults.timeAxisGraph.xTitleBottomGap) + 'px')
 }

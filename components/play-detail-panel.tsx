@@ -12,6 +12,11 @@ import React from "react"
 // 댓글 팝업 컴포넌트
 function CommentPopup({ open, onClose, onSave, initialValue }: { open: boolean; onClose: () => void; onSave: (text: string) => void; initialValue?: string }) {
   const [text, setText] = useState(initialValue || "");
+  useEffect(() => {
+    if (open) {
+      setText(initialValue || "");
+    }
+  }, [open, initialValue]);
   const maxLength = 500;
   if (!open) return null;
   return (
@@ -77,6 +82,7 @@ import { parseDetailedActivity, getEnglishCategoryName } from "@/lib/data-parser
 import { loadCategoryRecord, updateCategoryPlayData } from "@/lib/storage-category"
 import type { PlayCategory, DetailedActivity } from "@/lib/types"
 import { loadUIDesignCfg as _loadUIDesignCfg } from "@/lib/ui-design"
+import { supabase } from "@/lib/supabaseClient"
 
 // ---- 타입(로컬 경량) ---------------------------------------------------------
 type PlayActivityLite = {
@@ -128,9 +134,25 @@ const buildPlayKey = (category: PlayCategory, playNumber: number) => `${category
 const loadPlayStateMap = (childId: string): PlayStateMap => {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(`playState_${childId}`);
-    if (!raw) return {};
-    return JSON.parse(raw) as PlayStateMap;
+    const primaryKey = `playState_${childId}`;
+    const raw = localStorage.getItem(primaryKey);
+    if (raw) return JSON.parse(raw) as PlayStateMap;
+
+    // 마이그레이션: 예전에는 childId 없이 'playState_default'에만 저장했습니다.
+    // 새 childId로 접속했는데 기존 키가 있다면 한 번 복사해서 재사용합니다.
+    if (childId !== "default") {
+      const legacy = localStorage.getItem("playState_default");
+      if (legacy) {
+        try {
+          const parsed = JSON.parse(legacy) as PlayStateMap;
+          localStorage.setItem(primaryKey, legacy);
+          return parsed;
+        } catch {
+          // 파싱 실패 시 무시
+        }
+      }
+    }
+    return {};
   } catch {
     return {};
   }
@@ -185,7 +207,7 @@ const BOX_DEFAULT: Required<BoxStyle> = {
   px: "10px",
   py: "10px",
   h: "",
-  gap: "10px",
+  gap: "5px",
 };
 const PANEL_DEFAULT: Required<BoxStyle> = { ...BOX_DEFAULT, bg: "#fff", radius: "12px", px: "12px", py: "12px" };
 const TITLE_DEFAULT: Required<TextStyle> = { size: "13px", color: "#111827", bold: true };
@@ -283,11 +305,50 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
     // 통합 PlayStateMap 로딩 + 레거시 favorite_* 마이그레이션
     const [playStateMap, setPlayStateMap] = useState<PlayStateMap>({});
     useEffect(() => {
-      const base = loadPlayStateMap(childId);
-      const migrated = migrateLegacyFavorite(childId, category, playNumber, base);
-      setPlayStateMap(migrated);
-      savePlayStateMap(childId, migrated);
-    }, [childId, category, playNumber]);
+      let cancelled = false;
+      const loadAndSync = async () => {
+        const base = loadPlayStateMap(childId);
+        const migrated = migrateLegacyFavorite(childId, category, playNumber, base);
+        let merged: PlayStateMap = { ...migrated };
+
+        if (supabase && childId) {
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const accountId = sessionData?.session?.user?.id;
+
+            const { data, error } = await supabase
+              .from("play_states")
+              .select("favorite, comment")
+              .eq("child_id", childId)
+              .eq("account_id", accountId || '')
+              .eq("category", category)
+              .eq("play_number", playNumber)
+              .maybeSingle();
+
+            if (!error && data) {
+              const nextForKey: PlayState = {
+                favorite: !!data.favorite,
+                hasComment: !!(data.comment && String(data.comment).trim().length > 0),
+                localComment: data.comment ?? "",
+              };
+              merged = { ...merged, [playKey]: nextForKey };
+            }
+          } catch (error) {
+            console.warn("[PlayDetailPanel] Failed to load play state from Supabase:", error);
+          }
+        }
+
+        if (!cancelled) {
+          setPlayStateMap(merged);
+          savePlayStateMap(childId, merged);
+        }
+      };
+
+      loadAndSync();
+      return () => {
+        cancelled = true;
+      };
+    }, [childId, category, playNumber, playKey]);
 
     const currentState: PlayState = playStateMap[playKey] ?? { favorite: false, hasComment: false };
 
@@ -297,9 +358,40 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
         const next: PlayState = { ...base, ...partial };
         const nextMap = { ...prev, [playKey]: next };
         savePlayStateMap(childId, nextMap);
+
+        if (supabase && childId) {
+          const payload = {
+            child_id: childId,
+            account_id: undefined as string | undefined,
+            category,
+            play_number: playNumber,
+            favorite: !!next.favorite,
+            comment: next.localComment ?? (next.hasComment ? "" : null),
+          };
+
+          (async () => {
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const accountId = sessionData?.session?.user?.id;
+              if (accountId) {
+                payload.account_id = accountId;
+              }
+
+              const { error } = await supabase
+                .from("play_states")
+                .upsert(payload);
+              if (error) {
+                console.warn("[PlayDetailPanel] Failed to sync play state to Supabase:", error);
+              }
+            } catch (err) {
+              console.warn("[PlayDetailPanel] Unexpected Supabase error:", err);
+            }
+          })();
+        }
+
         return nextMap;
       });
-    }, [childId, playKey]);
+    }, [childId, playKey, category, playNumber]);
 
     const isFavorite = currentState.favorite;
     const toggleFavorite = React.useCallback(() => {
@@ -370,16 +462,9 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
       const text = s.localComment ?? "";
       setComment(text);
       setHasComment(s.hasComment && text.trim().length > 0);
-      // 디버그: 초기 동기화 상태
-      console.log('[DEBUG] init comment state', {
-        playKey,
-        hasComment: s.hasComment,
-        localCommentLen: text.length,
-      });
     }, [playKey, playStateMap]);
     const handleSaveComment = React.useCallback((text: string) => {
       const has = text.trim().length > 0;
-      console.log('[DEBUG] save comment', { playKey, textLen: text.length, has });
       setComment(text);
       setHasComment(has);
       setCurrentState({ hasComment: has, localComment: text });
@@ -464,8 +549,6 @@ export default function PlayDetailPanel({ category, playNumber, onBack, onNaviga
   // Move findSection definition here so it's available before use
   const findSection = (names: string[]) => detailData?.sections?.find((s: any) => names.some(n => s.title.includes(n)));
 
-  // Debug: log the header box config to verify value at render
-  console.log('[PlayDetailPanel] detailHeaderBox', uiDesign?.detailHeaderBox);
   // UI settings for header
   const headerBox = uiDesign?.detailHeaderBox ? {
     background: uiDesign.detailHeaderBox.bg,

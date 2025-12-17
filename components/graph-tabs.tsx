@@ -6,11 +6,12 @@
 // ---------------------------------------------------------
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadarGraph } from "@/components/radar-graph"
 import { TimeAxisGraph } from "@/components/time-axis-graph"
 import type { ChildProfile, PlayCategory } from "@/lib/types"
+import { usePersistentState } from "@/hooks/usePersistentState"
 
 interface GraphTabsProps {
   childProfile: ChildProfile
@@ -22,7 +23,10 @@ interface GraphTabsProps {
 // Component: GraphTabs — entry point
 
 export function GraphTabs({ childProfile, categoryDevelopmentAges, playData }: GraphTabsProps) {
-  const [selectedGraphTab, setSelectedGraphTab] = useState("radar")
+  const [selectedGraphTab, setSelectedGraphTab] = usePersistentState<string>(
+    "komensky_last_graph_tab",
+    "radar",
+  )
 
   // [증거 수집] 탭 전환 타이밍 기록
   // Effect: runs on mount/update — keep deps accurate to avoid extra renders
@@ -63,12 +67,20 @@ export function GraphTabs({ childProfile, categoryDevelopmentAges, playData }: G
             - style fontSize: 12px로 고정 (Tailwind로 하려면 text-[12px] 사용 가능)
             - 접근성: Radix가 role="tab", aria-selected 등을 자동 부여
           */}
-          <TabsTrigger value="radar" className="font-bold" style={{ fontSize: "14px" }}>
+          <TabsTrigger
+            value="radar"
+            className="font-bold"
+            style={{ fontSize: "var(--kp-graph-tab-font-size, 14px)" }}
+          >
             레이더 그래프
           </TabsTrigger>
 
           {/* 두 번째 탭 버튼(시간축) */}
-          <TabsTrigger value="timeline" className="font-bold" style={{ fontSize: "14px" }}>
+          <TabsTrigger
+            value="timeline"
+            className="font-bold"
+            style={{ fontSize: "var(--kp-graph-tab-font-size, 14px)" }}
+          >
             시간축 그래프
           </TabsTrigger>
         </TabsList>
@@ -86,7 +98,7 @@ export function GraphTabs({ childProfile, categoryDevelopmentAges, playData }: G
             - bg-white: 배경색 (테마 변수로 바꾸려면 bg-[var(--ui-card-bg)] 등으로 조정 가능) --> Color 독립적으로 제어를 원함.
             * 3D 효과/그림자 필요 시: shadow-sm/hover:shadow-md 또는 전용 클래스(.content-card) 사용
           */}
-          <div className="content-card p-4">
+          <div className="content-card px-0 py-4">
             {/*
               조건부 마운트 (성능 최적화)
               - 시각적으로만 숨기는 것이 아니라, 실제로 컴포넌트를 마운트/언마운트함.
@@ -109,7 +121,7 @@ export function GraphTabs({ childProfile, categoryDevelopmentAges, playData }: G
           - bg-white: 배경색 (테마 변수로 바꾸려면 bg-[var(--ui-card-bg)] 등으로 조정 가능) --> Color 독립적으로 제어를 원함.
         */}
         <TabsContent value="timeline" className="mt-0">
-          <div className="border rounded-lg p-4 bg-white">
+          <div className="border rounded-lg p-2 bg-white">
             {/*
               조건부 마운트(위와 동일한 의도)
               - TimeAxisGraph는 슬라이더/도메인/리사이즈 리스너 등 상태가 복잡할 수 있어,

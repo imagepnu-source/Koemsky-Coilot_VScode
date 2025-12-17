@@ -1,4 +1,5 @@
 import "./play-list-panel.hide-scrollbar.css";
+import { supabase } from "@/lib/supabaseClient";
 
 export type PlayListItem = {
   key: string;
@@ -8,7 +9,6 @@ export type PlayListItem = {
   minAge: number;
   maxAge: number;
   highestLevel?: number;
-  // levelColorClass?: string; // <- 의존하지 않습니다 (TS 불일치 회피)
 };
 
 export interface PlayListPanelProps {
@@ -43,9 +43,25 @@ const buildPlayKey = (category: string, num: number) => `${category}-${num}`;
 const loadPlayStateMap = (childId: string): PlayStateMap => {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(`playState_${childId}`);
-    if (!raw) return {};
-    return JSON.parse(raw) as PlayStateMap;
+    const primaryKey = `playState_${childId}`;
+    const raw = localStorage.getItem(primaryKey);
+    if (raw) return JSON.parse(raw) as PlayStateMap;
+
+    // 마이그레이션: 예전에는 childId 없이 'playState_default'에만 저장했습니다.
+    // 새 childId로 접속했는데 기존 키가 있다면 한 번 복사해서 재사용합니다.
+    if (childId !== "default") {
+      const legacy = localStorage.getItem("playState_default");
+      if (legacy) {
+        try {
+          const parsed = JSON.parse(legacy) as PlayStateMap;
+          localStorage.setItem(primaryKey, legacy);
+          return parsed;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return {};
   } catch {
     return {};
   }
@@ -83,8 +99,86 @@ export default function PlayListPanel({ items, onPlaySelect, onOpenCommentDialog
   const [contextMenuTarget, setContextMenuTarget] = useState<{ key: string; top: number; left: number } | null>(null);
 
   useEffect(() => {
-    const map = loadPlayStateMap(childId);
-    setPlayStateMap(map);
+    let cancelled = false;
+    const loadAndSync = async () => {
+      const base = loadPlayStateMap(childId);
+      let merged: PlayStateMap = { ...base };
+
+      if (supabase && childId) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const accountId = sessionData?.session?.user?.id;
+
+          const { data, error } = await supabase
+            .from("play_states")
+            .select("category, play_number, favorite, comment")
+            .eq("child_id", childId);
+
+          if (!error && data) {
+            for (const row of data as any[]) {
+              const key = buildPlayKey(row.category, row.play_number);
+              const prev = merged[key] ?? { favorite: false, hasComment: false };
+              merged[key] = {
+                ...prev,
+                favorite: !!row.favorite,
+                hasComment: !!(row.comment && String(row.comment).trim().length > 0),
+                localComment: row.comment ?? prev.localComment,
+              };
+            }
+
+            const upsertRows = Object.entries(merged)
+              .map(([key, state]) => {
+                const [cat, numStr] = key.split("-", 2);
+                const playNumber = Number(numStr);
+                if (!cat || !Number.isFinite(playNumber)) return null;
+                const row: any = {
+                  child_id: childId, // children 테이블의 id를 사용
+                  category: cat,
+                  play_number: playNumber,
+                  favorite: !!state.favorite,
+                };
+                if (state.localComment && state.localComment.trim() !== "") {
+                  row.comment = state.localComment;
+                }
+                return row;
+              })
+              .filter(
+                (row): row is {
+                  child_id: string;
+                  account_id: any;
+                  category: string;
+                  play_number: number;
+                  favorite: boolean;
+                  comment: string | null;
+                } => !!row,
+              );
+
+            if (upsertRows.length > 0) {
+              console.log("UPSERT payload", upsertRows);
+              await supabase.from("play_states").upsert(upsertRows);
+            }
+          }
+        } catch (error) {
+          console.warn("[PlayListPanel] Failed to sync play states with Supabase:", error);
+        }
+      }
+
+      if (!cancelled) {
+        setPlayStateMap(merged);
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`playState_${childId}`, JSON.stringify(merged));
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    loadAndSync();
+    return () => {
+      cancelled = true;
+    };
   }, [childId]);
 
   const updatePlayState = (playKey: string, updater: (prev: PlayState) => PlayState) => {
@@ -98,6 +192,35 @@ export default function PlayListPanel({ items, onPlaySelect, onOpenCommentDialog
         }
       } catch {
         // ignore
+      }
+
+      if (supabase && childId) {
+        const [cat, numStr] = playKey.split("-", 2);
+        const playNumber = Number(numStr);
+        if (cat && Number.isFinite(playNumber)) {
+          (async () => {
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const accountId = sessionData?.session?.user?.id;
+              const payload: any = {
+                child_id: childId,
+                category: cat,
+                play_number: playNumber,
+                favorite: !!next.favorite,
+                comment: next.localComment ?? (next.hasComment ? "" : null),
+              };
+              if (accountId) payload.account_id = accountId;
+              const { error } = await supabase
+                .from("play_states")
+                .upsert(payload);
+              if (error) {
+                console.warn("[PlayListPanel] Failed to sync single play state to Supabase:", error);
+              }
+            } catch (error) {
+              console.warn("[PlayListPanel] Unexpected Supabase error:", error);
+            }
+          })();
+        }
       }
       return merged;
     });
@@ -206,6 +329,7 @@ export default function PlayListPanel({ items, onPlaySelect, onOpenCommentDialog
               key={it.key}
               type="button"
               className="w-full text-left relative"
+              style={{ display: 'block', marginBottom: '5px' }}
               onClick={() => onPlaySelect(it.category, it.num)}
               onContextMenu={(e) => {
                 e.preventDefault();
