@@ -1,0 +1,1265 @@
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+
+type ParsedLine = {
+  id: number;
+  speaker: string;
+  sentences: string[];
+};
+
+type ParsedScene = {
+  id: number;
+  sceneNumber: number;
+  title: string;
+  lines: ParsedLine[];
+};
+
+type BookSection = {
+  id: number;
+  title: string;
+  sentences: string[];
+};
+
+function parseScript(raw: string): ParsedScene[] {
+  const lines = raw.split(/\r?\n/);
+  const scenes: ParsedScene[] = [];
+  let current: ParsedScene | null = null;
+  let lineId = 1;
+
+  // 현재 Scene 의 본문 텍스트를 한 덩어리로 모았다가,
+  // "이름: 문장." 패턴만 이용해서 나중에 파싱합니다.
+  let sceneBody = "";
+
+  const flushSceneBody = () => {
+    if (!current) return;
+    const body = sceneBody.trim();
+    if (!body) {
+      sceneBody = "";
+      return;
+    }
+
+    const speakerRegex = /\b([A-Za-z가-힣]+)\s*:/g;
+    let match: RegExpExecArray | null;
+    let lastSpeaker: string | null = null;
+    let segmentStart = 0;
+
+    while ((match = speakerRegex.exec(body)) !== null) {
+      const name = (match[1] || "").trim();
+
+      if (lastSpeaker !== null) {
+        const messagePart = body.slice(segmentStart, match.index).trim();
+        if (messagePart) {
+          const sentenceParts = messagePart
+            .split(".")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => (s.endsWith(".") ? s : s + "."));
+
+          current.lines.push({
+            id: lineId++,
+            speaker: lastSpeaker,
+            sentences: sentenceParts,
+          });
+        }
+      }
+
+      lastSpeaker = name;
+      segmentStart = speakerRegex.lastIndex;
+    }
+
+    if (lastSpeaker !== null) {
+      const messagePart = body.slice(segmentStart).trim();
+      if (messagePart) {
+        const sentenceParts = messagePart
+          .split(".")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => (s.endsWith(".") ? s : s + "."));
+
+        current.lines.push({
+          id: lineId++,
+          speaker: lastSpeaker,
+          sentences: sentenceParts,
+        });
+      }
+    }
+
+    sceneBody = "";
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Scene 헤더: "Scene 1: Title" 형식
+    const sceneMatch = /^Scene\s+(\d+)\s*:(.*)$/i.exec(trimmed);
+    if (sceneMatch) {
+      // 이전 Scene 본문을 먼저 파싱
+      flushSceneBody();
+
+      const num = parseInt(sceneMatch[1], 10) || scenes.length + 1;
+      const title = (sceneMatch[2] || "").trim();
+      const scene: ParsedScene = {
+        id: scenes.length + 1,
+        sceneNumber: num,
+        title,
+        lines: [],
+      };
+      scenes.push(scene);
+      current = scene;
+      continue;
+    }
+
+    // Scene 안의 나머지 텍스트는 줄바꿈/공백에 상관없이 한 문자열로 모아 둡니다.
+    if (!current) {
+      // Scene 헤더가 없는 경우도 대비해서 기본 Scene 생성
+      current = {
+        id: scenes.length + 1,
+        sceneNumber: scenes.length + 1,
+        title: "",
+        lines: [],
+      };
+      scenes.push(current);
+    }
+
+    sceneBody += (sceneBody ? " " : "") + line.trim();
+  }
+
+  // 마지막 Scene 본문 파싱
+  flushSceneBody();
+
+  return scenes;
+}
+
+function parseBookText(raw: string): BookSection[] {
+  const sections: BookSection[] = [];
+  if (!raw.trim()) return sections;
+
+  // '---' 가 단독으로 있는 줄을 기준으로 Section 을 나눕니다.
+  const parts = raw.split(/^---\s*$/m);
+  for (const part of parts) {
+    const block = part.trim();
+    if (!block) continue;
+
+    const sentences = block
+      .split(".")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => (s.endsWith(".") ? s : s + "."));
+
+    if (!sentences.length) continue;
+    const id = sections.length + 1;
+    sections.push({ id, title: `Section ${id}`, sentences });
+  }
+
+  return sections;
+}
+
+        export default function TTSPage() {
+          const [activeTab, setActiveTab] = useState<"script" | "book">("script");
+          const [text, setText] = useState("");
+          const [parsedScenes, setParsedScenes] = useState<ParsedScene[]>([]);
+          const [selectedSceneId, setSelectedSceneId] = useState<number | null>(null);
+          const [speaking, setSpeaking] = useState(false);
+          const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+          const [englishVoiceName, setEnglishVoiceName] = useState("default");
+          const [koreanVoiceName, setKoreanVoiceName] = useState("default");
+          const [repeatCount, setRepeatCount] = useState(1);
+          const [englishRate, setEnglishRate] = useState(1);
+          const [koreanRate, setKoreanRate] = useState(1);
+          const [volume, setVolume] = useState(1);
+          const [storageReady, setStorageReady] = useState(false);
+          const [translationPopupText, setTranslationPopupText] = useState<string | null>(null);
+          const [hoverPopup, setHoverPopup] = useState<
+            | {
+                word: string;
+                phonetic?: string;
+                englishDefs?: string[];
+                koreanDefs?: string[];
+                x: number;
+                y: number;
+              }
+            | null
+          >(null);
+          const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+          const hoverWordRef = useRef<string | null>(null);
+          const hoverPosRef = useRef<{ x: number; y: number } | null>(null);
+          const wordLoopRef = useRef<{ active: boolean; word: string } | null>(null);
+
+          // 책 읽기(book) 모드 상태
+          const [bookText, setBookText] = useState("");
+          const [bookSections, setBookSections] = useState<BookSection[]>([]);
+          const [selectedBookSectionId, setSelectedBookSectionId] = useState<number | null>(null);
+          const [bookSentenceIndex, setBookSentenceIndex] = useState(0);
+          const [bookRepeat, setBookRepeat] = useState(false);
+          const bookRepeatRef = useRef(false);
+          const bookPlayingRef = useRef(false);
+
+          const playModeRef = useRef<"idle" | "scene" | "all">("idle");
+          const loopSceneRef = useRef(false);
+          const voiceInitializedRef = useRef(false);
+
+          const currentScene = useMemo(() => {
+            if (!parsedScenes.length) return null;
+            if (selectedSceneId == null) return parsedScenes[0];
+            return parsedScenes.find((s) => s.id === selectedSceneId) ?? parsedScenes[0];
+          }, [parsedScenes, selectedSceneId]);
+
+          const currentBookSection = useMemo(() => {
+            if (!bookSections.length) return null;
+            if (selectedBookSectionId == null) return bookSections[0];
+            return bookSections.find((s) => s.id === selectedBookSectionId) ?? bookSections[0];
+          }, [bookSections, selectedBookSectionId]);
+
+          const currentBookSentence =
+            currentBookSection && currentBookSection.sentences.length
+              ? currentBookSection.sentences[
+                  Math.min(
+                    Math.max(0, bookSentenceIndex),
+                    currentBookSection.sentences.length - 1,
+                  )
+                ]
+              : "";
+
+          useEffect(() => {
+            if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+            const synth = window.speechSynthesis;
+
+            const loadVoices = () => {
+              const list = synth.getVoices();
+              if (list && list.length) {
+                setVoices(list);
+
+                if (!voiceInitializedRef.current) {
+                  // 기본 영어 음성 선택 (가능하면 Zira, 그다음 영어 계열)
+                  let chosenEn: SpeechSynthesisVoice | undefined;
+
+                  chosenEn = list.find(
+                    (v) => /zira/i.test(v.name) && v.lang && v.lang.toLowerCase().startsWith("en"),
+                  );
+
+                  if (!chosenEn) {
+                    chosenEn = list.find((v) => /zira/i.test(v.name));
+                  }
+
+                  if (!chosenEn) {
+                    chosenEn = list.find((v) => v.lang && v.lang.toLowerCase().startsWith("en-us"));
+                  }
+
+                  if (chosenEn) {
+                    setEnglishVoiceName(chosenEn.name);
+                  }
+
+                  // 기본 한글 음성 선택
+                  let chosenKo: SpeechSynthesisVoice | undefined;
+                  chosenKo = list.find(
+                    (v) => v.lang && v.lang.toLowerCase().startsWith("ko"),
+                  );
+
+                  if (chosenKo) {
+                    setKoreanVoiceName(chosenKo.name);
+                  }
+
+                  voiceInitializedRef.current = true;
+                }
+              }
+            };
+
+            loadVoices();
+            synth.addEventListener("voiceschanged", loadVoices);
+            return () => {
+              synth.removeEventListener("voiceschanged", loadVoices);
+            };
+          }, []);
+
+          // 브라우저 로컬에 입력된 대사 및 설정(속도/볼륨/보이스/Scene 선택)을 저장/복원 (서버 전송 없음)
+          useEffect(() => {
+            if (typeof window === "undefined") return;
+            try {
+              // 설정 먼저 로드
+              let settings: any = null;
+              try {
+                const settingsRaw = window.localStorage.getItem("tts_settings");
+                if (settingsRaw) {
+                  settings = JSON.parse(settingsRaw);
+                  console.log("[TTSStandalone] loadEffect: loaded tts_settings from localStorage");
+                }
+              } catch (e) {
+                console.warn("[TTSStandalone] Failed to parse tts_settings from localStorage:", e);
+              }
+
+              console.log("[TTSStandalone] loadEffect: trying to read tts_script_text from localStorage");
+              const stored = window.localStorage.getItem("tts_script_text");
+              if (stored != null) {
+                console.log(
+                  "[TTSStandalone] loadEffect: loaded script from localStorage, length=",
+                  stored.length,
+                );
+                setText(stored);
+                const trimmed = stored.trim();
+                if (trimmed) {
+                  console.log("[TTSStandalone] loadEffect: parsing stored script for scenes");
+                  const scenes = parseScript(trimmed);
+                  setParsedScenes(scenes);
+                  let nextSelected: number | null = scenes.length ? scenes[0].id : null;
+                  if (
+                    settings &&
+                    typeof settings.selectedSceneId === "number" &&
+                    scenes.some((s) => s.id === settings.selectedSceneId)
+                  ) {
+                    nextSelected = settings.selectedSceneId;
+                  }
+                  setSelectedSceneId(nextSelected);
+                }
+              } else {
+                console.log("[TTSStandalone] loadEffect: no stored script found in localStorage");
+              }
+
+              // 나머지 설정 적용 (텍스트 유무와 무관)
+              if (settings) {
+                if (typeof settings.englishRate === "number") {
+                  setEnglishRate(settings.englishRate);
+                }
+                if (typeof settings.koreanRate === "number") {
+                  setKoreanRate(settings.koreanRate);
+                }
+                if (typeof settings.volume === "number") {
+                  setVolume(settings.volume);
+                }
+                if (typeof settings.repeatCount === "number") {
+                  setRepeatCount(settings.repeatCount);
+                }
+                if (typeof settings.englishVoiceName === "string") {
+                  setEnglishVoiceName(settings.englishVoiceName);
+                }
+                if (typeof settings.koreanVoiceName === "string") {
+                  setKoreanVoiceName(settings.koreanVoiceName);
+                }
+
+                // 저장된 설정이 있다면, 이후 voice 초기화 useEffect 가 기본값으로 덮어쓰지 않도록 막습니다.
+                voiceInitializedRef.current = true;
+              }
+            } catch (e) {
+              console.warn("[TTSStandalone] Failed to load script/settings from localStorage:", e);
+            } finally {
+              // 로드 시도는 한 번 끝남
+              setStorageReady(true);
+            }
+          }, []);
+
+          useEffect(() => {
+            if (typeof window === "undefined") return;
+            // 아직 localStorage 로드가 안 끝났으면 자동 저장을 건너뜁니다.
+            if (!storageReady) {
+              console.log(
+                "[TTSStandalone] saveEffect: skip autosave because storage not ready yet. text length=",
+                text.length,
+              );
+              return;
+            }
+            try {
+              console.log(
+                "[TTSStandalone] saveEffect: autosave to localStorage, text length=",
+                text.length,
+              );
+              window.localStorage.setItem("tts_script_text", text);
+            } catch (e) {
+              console.warn("[TTSStandalone] Failed to save script to localStorage:", e);
+            }
+          }, [text]);
+
+          // 선택된 Scene, 속도, 볼륨, 보이스 설정 등을 localStorage 에 저장
+          useEffect(() => {
+            if (typeof window === "undefined") return;
+            if (!storageReady) return;
+            try {
+              const settings = {
+                selectedSceneId,
+                englishRate,
+                koreanRate,
+                volume,
+                repeatCount,
+                englishVoiceName,
+                koreanVoiceName,
+              };
+              window.localStorage.setItem("tts_settings", JSON.stringify(settings));
+            } catch (e) {
+              console.warn("[TTSStandalone] Failed to save tts_settings to localStorage:", e);
+            }
+          }, [
+            selectedSceneId,
+            englishRate,
+            koreanRate,
+            volume,
+            repeatCount,
+            englishVoiceName,
+            koreanVoiceName,
+            storageReady,
+          ]);
+
+          const englishVoices = useMemo(() => {
+            if (!voices.length) return [];
+            return voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("en"));
+          }, [voices]);
+
+          const koreanVoices = useMemo(() => {
+            if (!voices.length) return [];
+            return voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("ko"));
+          }, [voices]);
+
+          const handleClear = () => {
+            setText("");
+            setParsedScenes([]);
+            setSelectedSceneId(null);
+            if (typeof window !== "undefined") {
+              try {
+                console.log("[TTSStandalone] handleClear: removing tts_script_text from localStorage");
+                window.localStorage.removeItem("tts_script_text");
+                window.localStorage.removeItem("tts_settings");
+              } catch {
+                // ignore
+              }
+            }
+          };
+
+          const handleSave = () => {
+            const trimmed = text.trim();
+            if (!trimmed) {
+              alert("저장할 텍스트가 없습니다.");
+              return;
+            }
+            if (typeof window !== "undefined") {
+              try {
+                console.log(
+                  "[TTSStandalone] handleSave: explicitly saving to localStorage, length=",
+                  trimmed.length,
+                );
+                window.localStorage.setItem("tts_script_text", trimmed);
+              } catch {
+                // ignore
+              }
+            }
+            console.log("[TTSStandalone] handleSave: parsing current text into scenes");
+            const scenes = parseScript(trimmed);
+            setParsedScenes(scenes);
+            setSelectedSceneId(scenes.length ? scenes[0].id : null);
+          };
+
+          const handleBookParse = () => {
+            const trimmed = bookText.trim();
+            if (!trimmed) {
+              alert("책 읽기용 텍스트가 없습니다.");
+              return;
+            }
+            const sections = parseBookText(trimmed);
+            if (!sections.length) {
+              alert("유효한 Section 을 찾지 못했습니다. --- 로 구분해 주세요.");
+              return;
+            }
+            setBookSections(sections);
+            setSelectedBookSectionId(sections[0].id);
+            setBookSentenceIndex(0);
+          };
+
+          const handleStop = () => {
+            if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+            const synth = window.speechSynthesis;
+            try {
+              synth.cancel();
+              synth.cancel();
+            } catch {
+              // ignore
+            }
+            playModeRef.current = "idle";
+            loopSceneRef.current = false;
+            if (wordLoopRef.current) {
+              wordLoopRef.current.active = false;
+            }
+            setSpeaking(false);
+          };
+
+          const speakMessage = (
+            msg: string,
+            mode: "en" | "ko" = "en",
+            options?: { onDone?: () => void; repeatOverride?: number },
+          ) => {
+            const trimmed = msg.trim();
+            if (!trimmed) return;
+            if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+            playModeRef.current = "idle";
+            loopSceneRef.current = false;
+
+            try {
+              const synth = window.speechSynthesis;
+              // 현재 재생을 정리하고 새 메시지를 시작
+              console.log("[TTSStandalone] speakMessage: start", {
+                text: trimmed,
+                mode,
+                repeatOverride: options?.repeatOverride,
+              });
+              // 여기서는 더 이상 cancel() 을 호출하지 않습니다.
+              // Stop 버튼이나 단어 발음 중지에서만 cancel() 을 호출하여,
+              // 재생 직전에 cancel 때문에 발화가 무시되는 문제를 막습니다.
+
+              const doSpeak = (remaining: number) => {
+                const utter = new SpeechSynthesisUtterance(trimmed);
+                utter.volume = volume >= 0 && volume <= 1 ? volume : 1;
+                if (mode === "en") {
+                  utter.rate = englishRate > 0 ? englishRate : 1;
+                } else {
+                  utter.rate = koreanRate > 0 ? koreanRate : 1;
+                }
+                try {
+                  const allVoices = synth.getVoices?.() || [];
+                  let targetVoice: SpeechSynthesisVoice | undefined;
+                  if (mode === "en") {
+                    if (englishVoiceName && englishVoiceName !== "default") {
+                      targetVoice = allVoices.find((v) => v.name === englishVoiceName);
+                    }
+                    if (!targetVoice) {
+                      targetVoice = allVoices.find(
+                        (v) => v.lang && v.lang.toLowerCase().startsWith("en"),
+                      );
+                    }
+                  } else {
+                    if (koreanVoiceName && koreanVoiceName !== "default") {
+                      targetVoice = allVoices.find((v) => v.name === koreanVoiceName);
+                    }
+                    if (!targetVoice) {
+                      targetVoice = allVoices.find(
+                        (v) => v.lang && v.lang.toLowerCase().startsWith("ko"),
+                      );
+                    }
+                  }
+                  if (targetVoice) {
+                    utter.voice = targetVoice;
+                    if (targetVoice.lang) {
+                      utter.lang = targetVoice.lang;
+                    }
+                  } else {
+                    utter.lang = mode === "en" ? "en-US" : "ko-KR";
+                  }
+                } catch {
+                  // ignore
+                }
+
+                setSpeaking(true);
+                utter.onend = () => {
+                  console.log("[TTSStandalone] speakMessage: onend", {
+                    text: trimmed,
+                    mode,
+                  });
+                  if (remaining > 1) {
+                    doSpeak(remaining - 1);
+                  } else {
+                    setSpeaking(false);
+                    if (options?.onDone) {
+                      options.onDone();
+                    }
+                  }
+                };
+                utter.onerror = (event) => {
+                  console.warn("[TTSStandalone] speakMessage: onerror", {
+                    text: trimmed,
+                    mode,
+                    event,
+                  });
+                  setSpeaking(false);
+                  if (options?.onDone) {
+                    options.onDone();
+                  }
+                };
+
+                synth.speak(utter);
+              };
+
+              const baseCount = repeatCount > 0 ? repeatCount : 1;
+              const finalCount =
+                typeof options?.repeatOverride === "number" && options.repeatOverride > 0
+                  ? options.repeatOverride
+                  : baseCount;
+              doSpeak(finalCount);
+            } catch (e) {
+              console.warn("[TTSStandalone] Failed to play message:", e);
+              setSpeaking(false);
+            }
+          };
+
+          const handlePlay = (mode: "scene" | "all") => {
+            // 현재 화면에서는 개별 Play 버튼만 사용하므로, 이 함수는 비워 둡니다.
+            mode;
+            handleStop();
+          };
+
+          const handleBookPlay = () => {
+            if (!currentBookSection || !currentBookSentence) return;
+            bookPlayingRef.current = true;
+
+            const playOnce = () => {
+              if (!bookPlayingRef.current) return;
+              const sentence = currentBookSentence;
+              if (!sentence) return;
+
+              speakMessage(sentence, "en", {
+                repeatOverride: 1,
+                onDone: () => {
+                  if (!bookPlayingRef.current) return;
+                  if (bookRepeatRef.current) {
+                    playOnce();
+                  } else {
+                    // 반복이 꺼져 있으면 다음 문장으로 하이라이트만 이동
+                    setBookSentenceIndex((prev) => {
+                      if (!currentBookSection) return prev;
+                      const max = currentBookSection.sentences.length - 1;
+                      return prev < max ? prev + 1 : prev;
+                    });
+                  }
+                },
+              });
+            };
+
+            playOnce();
+          };
+
+          const handleBookStop = () => {
+            bookPlayingRef.current = false;
+            handleStop();
+          };
+
+          const startWordPronounceLoop = (word: string) => {
+            const trimmed = word.trim();
+            if (!trimmed) return;
+
+            // 이미 같은 단어에 대한 루프가 돌고 있으면 다시 시작하지 않음
+            if (
+              wordLoopRef.current &&
+              wordLoopRef.current.active &&
+              wordLoopRef.current.word === trimmed
+            ) {
+              console.log("[TTSStandalone] startWordPronounceLoop: already active for", trimmed);
+              return;
+            }
+
+            console.log("[TTSStandalone] startWordPronounceLoop:", trimmed);
+            wordLoopRef.current = { active: true, word: trimmed };
+
+            const speakOnce = () => {
+              const loop = wordLoopRef.current;
+              if (!loop || !loop.active || loop.word !== trimmed) return;
+              console.log("[TTSStandalone] speakOnce (via speakMessage) for word:", trimmed);
+
+              speakMessage(trimmed, "en", {
+                repeatOverride: 1,
+                onDone: () => {
+                  const again = wordLoopRef.current;
+                  if (again && again.active && again.word === trimmed) {
+                    speakOnce();
+                  }
+                },
+              });
+            };
+
+            speakOnce();
+          };
+
+          const stopWordPronounceLoop = () => {
+            if (wordLoopRef.current) {
+              wordLoopRef.current.active = false;
+            }
+            console.log("[TTSStandalone] stopWordPronounceLoop: deactivate loop only");
+          };
+
+          const translateToKorean = async (textToTranslate: string): Promise<string> => {
+            const trimmed = textToTranslate.trim();
+            if (!trimmed) return "";
+
+            try {
+              const query = encodeURIComponent(trimmed);
+              const res = await fetch(
+                `https://api.mymemory.translated.net/get?q=${query}&langpair=en|ko`,
+              );
+              if (!res.ok) {
+                console.warn("[TTSStandalone] translateToKorean: HTTP error", res.status);
+                return trimmed;
+              }
+              const data: any = await res.json();
+              const translated = (data?.responseData?.translatedText as string | undefined)?.trim();
+              if (translated) {
+                return translated;
+              }
+              return trimmed;
+            } catch (e) {
+              console.warn("[TTSStandalone] translateToKorean failed:", e);
+              return trimmed;
+            }
+          };
+
+          const lookupWordDetail = async (
+            word: string,
+          ): Promise<{ phonetic?: string; englishDefs: string[]; koreanDefs: string[] }> => {
+            const result: { phonetic?: string; englishDefs: string[]; koreanDefs: string[] } = {
+              englishDefs: [],
+              koreanDefs: [],
+            };
+
+            const mapPosToKorean = (pos?: string): string | undefined => {
+              if (!pos) return undefined;
+              const p = pos.toLowerCase();
+              if (p === "noun") return "명사";
+              if (p === "verb") return "동사";
+              if (p === "adjective") return "형용사";
+              if (p === "adverb") return "부사";
+              if (p === "preposition") return "전치사";
+              if (p === "conjunction") return "접속사";
+              if (p === "pronoun") return "대명사";
+              if (p === "interjection") return "감탄사";
+              return undefined;
+            };
+
+            const lower = word.toLowerCase();
+            const posForDef: (string | undefined)[] = [];
+            try {
+              const res = await fetch(
+                `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lower)}`,
+              );
+              if (res.ok) {
+                const data: any = await res.json();
+                const entry = Array.isArray(data) && data.length > 0 ? data[0] : undefined;
+                if (entry) {
+                  const phonetic =
+                    entry.phonetic ||
+                    (Array.isArray(entry.phonetics)
+                      ? entry.phonetics.find((p: any) => p.text)?.text
+                      : undefined);
+                  if (phonetic) result.phonetic = phonetic;
+
+                  if (Array.isArray(entry.meanings)) {
+                    const defs: string[] = [];
+                    for (const m of entry.meanings) {
+                      if (!m || !Array.isArray(m.definitions)) continue;
+                      const posKo = mapPosToKorean(m.partOfSpeech as string | undefined);
+                      for (const d of m.definitions) {
+                        if (typeof d?.definition === "string") {
+                          let s = (d.definition as string).trim();
+                          const cutBy = (sep: string) => {
+                            const idx = s.indexOf(sep);
+                            if (idx > 0) s = s.slice(0, idx);
+                          };
+                          cutBy(";");
+                          cutBy(":");
+                          cutBy(".");
+                          if (s.length > 60) s = s.slice(0, 57).trimEnd() + "...";
+                          s = s.trim();
+                          if (!s) continue;
+                          defs.push(s);
+                          posForDef.push(posKo);
+                          if (defs.length >= 3) break;
+                        }
+                      }
+                      if (defs.length >= 3) break;
+                    }
+
+                    result.englishDefs = defs;
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("[TTSStandalone] lookupWordDetail (dict) failed:", e);
+            }
+
+            try {
+              const hasHangul = (text: string): boolean => /[가-힣]/.test(text);
+
+              const KOREAN_STOPWORDS = new Set<string>([
+                "종종",
+                "때때로",
+                "흔히",
+                "보통",
+                "개인",
+                "플라스틱",
+                "작은",
+                "작고",
+                "여러",
+                "많은",
+                "일종의",
+                "종류의",
+                "특정",
+                "특수한",
+                "어떤",
+              ]);
+
+              const stripParticles = (token: string): string => {
+                let t = token.replace(/[,;:]+$/g, "");
+                t = t.replace(
+                  /^(.*?)(은|는|이|가|을|를|으로써|으로부터|으로|로|에|에서|에게|와|과|랑|뿐|만|조차|까지|부터|의)$/u,
+                  "$1",
+                );
+                return t.trim();
+              };
+
+              const extractCoreKorean = (text: string): string => {
+                let s = text.trim();
+                if (!s) return "";
+                // 괄호 안 설명 제거
+                s = s.replace(/\([^)]*\)/g, "");
+                // 첫 번째 문장만 사용
+                const firstSentence = s.split(/[.!?~…]/)[0] ?? s;
+                const rawTokens = firstSentence.split(/\s+/).filter(Boolean);
+                const candidates: string[] = [];
+
+                for (let raw of rawTokens) {
+                  if (!hasHangul(raw)) continue;
+                  let token = raw;
+                  // 양쪽 따옴표/특수문자 제거
+                  token = token.replace(/^["“”'《〈「『]+/, "");
+                  token = token.replace(/["“”'》〉」』]+$/, "");
+                  token = stripParticles(token);
+                  if (!hasHangul(token)) continue;
+                  if (KOREAN_STOPWORDS.has(token)) continue;
+                  if (token.length === 1) continue;
+                  if (token.length > 8) token = token.slice(0, 8).trimEnd();
+                  candidates.push(token);
+                }
+
+                if (!candidates.length) return "";
+                // 길이 2~3인 단어를 우선 선택 (지갑, 계단 등)
+                const idxShort = candidates.findIndex((c) => c.length >= 2 && c.length <= 3);
+                if (idxShort >= 0) return candidates[idxShort];
+                return candidates[0];
+              };
+
+              // 일반 규칙: 영어 정의 문장을 한국어로 번역 → 핵심 한국어 명사만 추출
+              if (result.englishDefs.length) {
+                const koDefs: string[] = [];
+                const usedPos = new Set<string>();
+                for (let i = 0; i < result.englishDefs.length; i++) {
+                  const def = result.englishDefs[i];
+                  const koSentence = await translateToKorean(def);
+                  const base = extractCoreKorean(koSentence);
+                  if (!base) continue;
+                  const posKo = posForDef[i];
+                  const key = (posKo || "") + "|" + base;
+                  if (usedPos.has(key)) continue;
+                  usedPos.add(key);
+                  const label = posKo ? `(${posKo}) ` : "";
+                  koDefs.push(label + base);
+                  if (koDefs.length >= 3) break;
+                }
+                if (koDefs.length) {
+                  result.koreanDefs = koDefs;
+                }
+              }
+
+              // 사전 정의 번역에서 아무것도 못 뽑았을 때만 마지막 수단으로 단어 자체 번역
+              if (!result.koreanDefs.length) {
+                const wordKo = await translateToKorean(word);
+                const base = extractCoreKorean(wordKo);
+                if (base) {
+                  result.koreanDefs = [base];
+                }
+              }
+            } catch (e) {
+              console.warn("[TTSStandalone] lookupWordDetail (ko) failed:", e);
+            }
+
+            return result;
+          };
+
+          return (
+            <main className="min-h-screen flex flex-col items-center bg-slate-50 py-4">
+              <div className="w-full max-w-2xl bg-white rounded shadow p-4 space-y-4">
+                <h1 className="text-lg font-semibold">TTS (대본 읽어주기)</h1>
+
+                {/* 상단: 스크립트 입력 (50px 높이) + 지움/저장 */}
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-700">대본 입력 창:</div>
+                  <Textarea
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder={"여기에 대사를 입력하세요"}
+                    className="h-[50px] text-sm"
+                  />
+                  <div className="flex justify-end gap-2 text-sm">
+                    <Button variant="outline" size="sm" onClick={handleClear}>
+                      지움
+                    </Button>
+                    <Button size="sm" onClick={handleSave}>
+                      저장
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 하단: Scene/등장인물 뷰 (700px 패널) */}
+                <div className="border rounded p-2 space-y-2" style={{ height: 700, overflowY: "auto" }}>
+                  {/* 상단: 볼륨 + 영어/한글 배속 + 보이스 선택 */}
+                  <div className="flex flex-col items-end gap-1 text-sm text-gray-600 mb-1">
+                    <div className="flex items-center gap-2">
+                      <span>볼륨:</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={volume}
+                        onChange={(e) => setVolume(parseFloat(e.target.value) || 0)}
+                        className="w-40"
+                        title="전체 TTS 볼륨입니다."
+                      />
+                      <span className="w-10 text-right">{Math.round(volume * 100)}%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>영어배속:</span>
+                      <select
+                        className="border rounded px-1 py-0.5 text-sm"
+                        value={englishRate}
+                        onChange={(e) => setEnglishRate(parseFloat(e.target.value) || 1)}
+                        title="영어 대사의 재생 속도입니다."
+                      >
+                        {[0.6, 0.8, 1, 1.2, 1.5].map((r) => (
+                          <option key={r} value={r}>
+                            {r.toFixed(1)}x
+                          </option>
+                        ))}
+                      </select>
+                      <span>영어 보이스:</span>
+                      {englishVoices.length > 0 ? (
+                        <select
+                          className="border rounded px-1 py-0.5 text-sm max-w-[200px]"
+                          value={englishVoiceName}
+                          onChange={(e) => setEnglishVoiceName(e.target.value)}
+                          title="영어 대사에 사용할 음성을 선택합니다."
+                        >
+                          <option value="default">기본 영어 음성</option>
+                          {englishVoices.map((v) => (
+                            <option key={v.name} value={v.name}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          className="border rounded px-1 py-0.5 text-sm max-w-[200px] text-gray-400 bg-gray-50"
+                          value="default"
+                          disabled
+                          title="이 기기/브라우저에서는 개별 영어 음성 선택이 지원되지 않아 브라우저 기본 음성을 사용합니다."
+                        >
+                          <option value="default">기본 영어 (브라우저 기본)</option>
+                        </select>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>한글 배속:</span>
+                      <select
+                        className="border rounded px-1 py-0.5 text-sm"
+                        value={koreanRate}
+                        onChange={(e) => setKoreanRate(parseFloat(e.target.value) || 1)}
+                        title="해석(한글) 재생 속도입니다. 기본은 1배속입니다."
+                      >
+                        {[0.6, 0.8, 1, 1.2, 1.5].map((r) => (
+                          <option key={r} value={r}>
+                            {r.toFixed(1)}x
+                          </option>
+                        ))}
+                      </select>
+                      <span>한글 보이스:</span>
+                      {koreanVoices.length > 0 ? (
+                        <select
+                          className="border rounded px-1 py-0.5 text-sm max-w-[200px]"
+                          value={koreanVoiceName}
+                          onChange={(e) => setKoreanVoiceName(e.target.value)}
+                          title="해석(한글) 재생에 사용할 음성을 선택합니다."
+                        >
+                          <option value="default">기본 한글 음성</option>
+                          {koreanVoices.map((v) => (
+                            <option key={v.name} value={v.name}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          className="border rounded px-1 py-0.5 text-sm max-w-[200px] text-gray-400 bg-gray-50"
+                          value="default"
+                          disabled
+                          title="이 기기/브라우저에서는 한글 음성 선택이 지원되지 않아 브라우저 기본 음성을 사용합니다."
+                        >
+                          <option value="default">기본 한글 (브라우저 기본)</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 아래 줄: Scene 선택 */}
+                  <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+                    <div className="flex items-center gap-2">
+                      <span>Scene</span>
+                      <select
+                        className="border rounded px-1 py-0.5 text-sm"
+                        value={currentScene ? currentScene.id : ""}
+                        onChange={(e) => setSelectedSceneId(Number(e.target.value) || null)}
+                        disabled={!parsedScenes.length}
+                      >
+                        {parsedScenes.length === 0 && <option value="">(저장 후 자동 생성)</option>}
+                        {parsedScenes.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {`Scene ${s.sceneNumber}${s.title ? ": " + s.title : ""}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {currentScene ? (
+                    <div className="space-y-3 text-sm">
+                      {/* Scene 제목 + Scene 전체 Play 버튼 */}
+                      <div className="flex items-center justify-between font-semibold">
+                        <div>{`Scene ${currentScene.sceneNumber}: ${currentScene.title || ""}`}</div>
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-2 text-sm font-normal">
+                            <span>재생 횟수:</span>
+                            <select
+                              className="border rounded px-1 py-0.5 text-sm"
+                              value={repeatCount}
+                              onChange={(e) => setRepeatCount(Number(e.target.value) || 1)}
+                              title="이 Play 에서 반복 재생 횟수입니다."
+                            >
+                              {[1, 3, 5, 7, 9].map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm font-normal">
+                            <Button
+                              size="sm"
+                              className="h-7 px-3 text-sm"
+                              onClick={() => {
+                                const sceneText = currentScene.lines
+                                  .map((line) => `${line.speaker}: ${line.sentences.join(" ")}`)
+                                  .join(" ");
+                                speakMessage(sceneText, "en");
+                              }}
+                            >
+                              Play
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 px-3 text-sm"
+                              onClick={handleStop}
+                            >
+                              Stop
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 각 등장인물의 대사를 가로 3열로 배치: 이름 | 문장들 | Play/해석 */}
+                      {currentScene.lines.map((line) => {
+                        const combinedMessage = line.sentences.join("\n");
+                        const isSingleSentence = line.sentences.length <= 1;
+                        const textAreaHeightClass = isSingleSentence ? "h-[50px]" : "h-[100px]";
+                        return (
+                          <div key={line.id} className="border rounded p-2 flex items-stretch gap-2">
+                            {/* 왼쪽: 화자 이름 + Play/해석 버튼 (세로 배치) */}
+                            <div className="w-24 flex flex-col items-center justify-start gap-2">
+                              <div className="w-full font-semibold text-sm text-left">
+                                {line.speaker}:
+                              </div>
+                              <div className="w-full flex items-center justify-center gap-1">
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-3 text-sm"
+                                  onClick={() => {
+                                    const msg = `${line.speaker}: ${combinedMessage}`;
+                                    speakMessage(msg, "en");
+                                  }}
+                                >
+                                  Play
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-3 text-sm bg-sky-100 text-sky-700 border border-sky-300 hover:bg-sky-200"
+                                  onClick={async () => {
+                                    const original = combinedMessage.replace(/\n/g, " ");
+                                    const translated = await translateToKorean(original);
+                                    if (!translated) return;
+                                    setTranslationPopupText(translated);
+
+                                    const hasHangul = /[가-힣]/.test(translated);
+                                    if (hasHangul) {
+                                      // 번역문에 한글이 있으면 한국어 보이스로 읽기
+                                      speakMessage(translated, "ko", {
+                                        onDone: () => setTranslationPopupText(null),
+                                      });
+                                    } else {
+                                      // 한글이 거의 없으면 영어 원문을 영어 보이스로 읽기
+                                      speakMessage(original, "en", {
+                                        onDone: () => setTranslationPopupText(null),
+                                      });
+                                    }
+                                  }}
+                                >
+                                  해석
+                                </Button>
+                              </div>
+                            </div>
+                            {/* 오른쪽: 대사 텍스트 (단어 호버 사전) */}
+                            <div
+                              className={`text-sm flex-1 ${textAreaHeightClass} border rounded px-2 py-1 bg-slate-50 overflow-y-auto whitespace-pre-wrap`}
+                            >
+                              {combinedMessage.split(/(\s+)/).map((part, idx) => {
+                                if (part.match(/^\s+$/)) {
+                                  return part;
+                                }
+                                const clean = part.replace(/[^A-Za-z']/g, "");
+                                if (!clean) {
+                                  return (
+                                    <span key={idx}>
+                                      {part}
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span
+                                    key={idx}
+                                    className="cursor-pointer hover:bg-yellow-100"
+                                    onMouseEnter={(e) => {
+                                      if (hoverTimerRef.current) {
+                                        clearTimeout(hoverTimerRef.current);
+                                      }
+                                      hoverWordRef.current = clean;
+                                      const rect = (e.target as HTMLElement).getBoundingClientRect();
+                                      hoverPosRef.current = {
+                                        x: rect.left + window.scrollX,
+                                        y: rect.bottom + window.scrollY + 30,
+                                      };
+                                      hoverTimerRef.current = setTimeout(async () => {
+                                        if (hoverWordRef.current !== clean) return;
+                                        const detail = await lookupWordDetail(clean);
+                                        const pos = hoverPosRef.current;
+                                        if (!pos || hoverWordRef.current !== clean) return;
+                                        setHoverPopup({
+                                          word: clean,
+                                          phonetic: detail.phonetic,
+                                          englishDefs: detail.englishDefs,
+                                          koreanDefs: detail.koreanDefs,
+                                          x: pos.x,
+                                          y: pos.y,
+                                        });
+                                      }, 100);
+                                    }}
+                                    onMouseLeave={() => {
+                                      if (hoverTimerRef.current) {
+                                        clearTimeout(hoverTimerRef.current);
+                                        hoverTimerRef.current = null;
+                                      }
+                                      hoverWordRef.current = null;
+                                      hoverPosRef.current = null;
+                                      setHoverPopup(null);
+                                    }}
+                                    onMouseDown={(e) => {
+                                      // 단어 위에서 왼쪽 버튼을 누르고 있는 동안 반복 발음
+                                      // (사전 팝업이 떠 있는 경우가 대부분이지만, 팝업 상태에 의존하지 않음)
+                                      if (e.button === 0) {
+                                        e.preventDefault();
+                                        console.log(
+                                          "[TTSStandalone] onMouseDown word:",
+                                          clean,
+                                          "raw part:",
+                                          part,
+                                        );
+                                        startWordPronounceLoop(clean);
+                                      }
+                                    }}
+                                    onMouseUp={(e) => {
+                                      if (e.button === 0) {
+                                        e.preventDefault();
+                                        stopWordPronounceLoop();
+                                      }
+                                    }}
+                                  >
+                                    {part}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {hoverPopup && (
+                        <div
+                          className="fixed z-40 bg-white border rounded shadow-md p-3 text-sm max-w-xs"
+                          style={{ left: hoverPopup.x, top: hoverPopup.y }}
+                        >
+                          <div className="flex items-center justify-between mb-1 gap-2">
+                            <span className="font-semibold">{hoverPopup.word}</span>
+                            <a
+                              href={`https://en.dict.naver.com/#/search?query=${encodeURIComponent(
+                                hoverPopup.word,
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-white bg-[#03C75A] hover:bg-[#02b351] px-3 py-1 rounded text-xs font-bold no-underline shadow-sm transition-colors"
+                            >
+                              Naver Dictionary
+                            </a>
+                          </div>
+                          {hoverPopup.phonetic && (
+                            <div className="text-sm text-gray-500 mb-1">
+                              [{hoverPopup.phonetic}]
+                            </div>
+                          )}
+                          {hoverPopup.koreanDefs && hoverPopup.koreanDefs.length > 0 && (
+                            <div className="text-sm text-gray-800 mb-2 whitespace-pre-wrap">
+                              {hoverPopup.koreanDefs.map((d, i) => (
+                                <div key={i} className="mb-0.5">{d}</div>
+                              ))}
+                            </div>
+                          )}
+                          {(!hoverPopup.koreanDefs || hoverPopup.koreanDefs.length === 0) &&
+                            hoverPopup.englishDefs &&
+                            hoverPopup.englishDefs.length > 0 && (
+                              <div className="text-sm text-gray-500 whitespace-pre-wrap">
+                                {hoverPopup.englishDefs.slice(0, 3).map((d, i) => (
+                                  <div key={i}>{`${i + 1}. ${d}`}</div>
+                                ))}
+                              </div>
+                            )}
+                        </div>
+                      )}
+                      {translationPopupText && (
+                        <div className="fixed inset-0 flex items-center justify-center bg-black/30 z-50">
+                          <div className="bg-white rounded shadow-lg p-4 max-w-md w-[90%] text-sm">
+                            <div className="font-semibold mb-2">해석</div>
+                            <div className="whitespace-pre-wrap mb-3 max-h-64 overflow-y-auto">
+                              {translationPopupText}
+                            </div>
+                            <div className="text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setTranslationPopupText(null)}
+                              >
+                                닫기
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">
+                      저장된 Scene 이 없습니다. 위에 스크립트를 입력하고 저장을 눌러 주세요.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </main>
+          );
+        }

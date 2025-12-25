@@ -11,6 +11,7 @@
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
@@ -40,5 +41,9 @@
     "**/*.prev.ts",
     "**/*.bak.tsx",
     "**/*.bak.ts"
-  ]
+  ],
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  }
 }

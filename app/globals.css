@@ -164,6 +164,7 @@
     @apply bg-background text-foreground;
     background-color: var(--background); /* 즉시 변수 반영 */
     color: var(--foreground);
+    min-height: 100vh;
     transition: background-color 0.25s ease, color 0.25s ease; /* 부드러운 전환 */
   }
 }

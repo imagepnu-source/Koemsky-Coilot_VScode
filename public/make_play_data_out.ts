@@ -1,7 +1,8 @@
 // 이 파일은 7개 details_*.txt에서 추출한 play activity list를 모두 합쳐서 출력합니다.
 // 포맷: 카테고리명 (한글,영문)\n번호\t제목\t연령대
 
-import { loadCategoryData } from "../lib/data-parser";
+import { writeFileSync } from "fs";
+import { loadCategoryData } from "../lib/data-parser.ts";
 
 const categories = [
   { korean: "대 근육", english: "gross-motor" },
@@ -22,6 +23,6 @@ const categories = [
       output += `${item.number}\t${item.title}\t${item.ageRange}\n`;
     }
   }
-  require("fs").writeFileSync("public/play_data_OUT.txt", output.trim(), "utf-8");
+  writeFileSync("public/play_data_OUT.txt", output.trim(), "utf-8");
   console.log("✅ play_data_OUT.txt 생성 완료");
 })();

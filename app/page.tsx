@@ -347,19 +347,25 @@ useEffect(() => {
       // Supabase에서 해당 아이의 카테고리별 놀이 기록(CategoryRecord)을 불러와 localStorage에 반영
       try {
         if (supabase && profile) {
-          const safeName = (profile.name || "").trim() || "아기";
-          const datePart = profile.birthDate.toISOString().split("T")[0];
-          const childId = `${safeName}_${datePart}`;
+          const rawName = (profile.name || "").trim();
+
+          // 이름이 비어 있거나 기본 플레이스홀더("아기")인 상태에서는
+          // 잘못된 child_id("아기_YYYY-MM-DD")로 Supabase를 조회/동기화하지 않는다.
+          if (!rawName || rawName === "아기") {
+            // 이 경우에는 로컬 데이터만 사용하고 Supabase 동기화는 보류한다.
+          } else {
+            const datePart = profile.birthDate.toISOString().split("T")[0];
+            const childId = `${rawName}_${datePart}`;
 
           const { data: sessionData } = await supabase.auth.getSession();
           const accountId = sessionData?.session?.user?.id;
 
-          const { data, error } = await supabase
-            .from("category_records")
-            .select("category, record")
-            .eq("child_id", childId);
+            const { data, error } = await supabase
+              .from("category_records")
+              .select("category, record")
+              .eq("child_id", childId);
 
-          if (!error && data) {
+            if (!error && data) {
             const remoteCategories = new Set<string>();
             for (const row of data as any[]) {
               const cat = row.category as string;
@@ -393,29 +399,30 @@ useEffect(() => {
               }
             }
 
-            // 로컬에는 있는데 Supabase에는 없는 카테고리는 한 번 업로드(마이그레이션)
-            try {
-              const categories = getPlayCategories();
-              for (const cat of categories) {
-                if (remoteCategories.has(cat)) continue;
-                const key = getChildCategoryStorageKey(cat as PlayCategory, profile);
-                const raw = localStorage.getItem(key);
-                if (!raw) continue;
-                try {
-                  const record = JSON.parse(raw);
-                  const payload = {
-                    child_id: childId,
-                    category: cat,
-                    record,
-                  };
+              // 로컬에는 있는데 Supabase에는 없는 카테고리는 한 번 업로드(마이그레이션)
+              try {
+                const categories = getPlayCategories();
+                for (const cat of categories) {
+                  if (remoteCategories.has(cat)) continue;
+                  const key = getChildCategoryStorageKey(cat as PlayCategory, profile);
+                  const raw = localStorage.getItem(key);
+                  if (!raw) continue;
+                  try {
+                    const record = JSON.parse(raw);
+                    const payload = {
+                      child_id: childId,
+                      category: cat,
+                      record,
+                    };
 
-                  await supabase.from("category_records").upsert(payload);
-                } catch (e) {
-                  console.warn("[page] Failed to migrate local category record to Supabase", cat, e);
+                    await supabase.from("category_records").upsert(payload);
+                  } catch (e) {
+                    console.warn("[page] Failed to migrate local category record to Supabase", cat, e);
+                  }
                 }
+              } catch (e) {
+                console.warn("[page] Failed to run category_records migration:", e);
               }
-            } catch (e) {
-              console.warn("[page] Failed to run category_records migration:", e);
             }
           }
         }
@@ -677,9 +684,16 @@ useEffect(() => {
 
     const refreshCategoryFromSupabase = async () => {
       try {
-        const safeName = (childProfile.name || "").trim() || "아기"
+        const rawName = (childProfile.name || "").trim()
+
+        // 이름이 비어 있거나 기본 플레이스홀더("아기")인 상태에서는
+        // 잘못된 child_id("아기_YYYY-MM-DD")로 Supabase를 조회하지 않는다.
+        if (!rawName || rawName === "아기") {
+          return
+        }
+
         const datePart = childProfile.birthDate.toISOString().split("T")[0]
-        const childId = `${safeName}_${datePart}`
+        const childId = `${rawName}_${datePart}`
 
         const { data, error } = await supabase
           .from("category_records")
@@ -1319,6 +1333,8 @@ useEffect(() => {
           playData={playData}
           title="아이 정보 설정"
         />
+
+        {/* TTS (대본 읽어주기) 다이얼로그 */}
       </div>
     </UISettingsProvider>
   )

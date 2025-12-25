@@ -4,7 +4,7 @@
 // File: lib/global-categories.ts
 // Note: Comments are for maintainability; no runtime behavior change.
 // ---------------------------------------------------------
-import { getCachedCategories } from "./data-parser"
+import { getCachedCategories } from "./data-parser.ts"
 
 // Global category data interface
 export interface GlobalCategory {
@@ -29,11 +29,11 @@ export function initializeGlobalCategories(): void {
   const categories = getCachedCategories()
 
   GLOBAL_CATEGORIES = categories// List render — each item must have stable key
-.map((cat, index) => ({
-    korean: cat.korean,
-    english: cat.english,
-    index,
-  }))
+    .map((cat, index) => ({
+      korean: cat.korean,
+      english: cat.english,
+      index,
+    }))
 
   GLOBAL_CATEGORY_COUNT = categories.length
   GLOBAL_KOREAN_NAMES = categories.map((cat) => cat.korean)

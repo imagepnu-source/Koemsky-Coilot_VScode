@@ -4,21 +4,21 @@
 // File: lib/data-parser.ts
 // Note: Comments are for maintainability; no runtime behavior change.
 // ---------------------------------------------------------
-import type { AvailablePlayList, PlayCategory, DetailedActivity } from "./types"
-import { initializeGlobalCategories, reinitializeGlobalCategories } from "./global-categories"
+import type { AvailablePlayList, PlayCategory, DetailedActivity } from "./types.ts"
+import { initializeGlobalCategories, reinitializeGlobalCategories } from "./global-categories.ts"
 
 // Component: getCachedCategories — entry point
 export function getCachedCategories(): { korean: string; english: string }[] {
   // This function is only used for category name mapping, not for data loading.
   // The actual available play list is loaded from play_data.txt.
   return [
-     { korean: "대 근육", english: "gross-motor" },
-     { korean: "소 근육", english: "fine-motor" },
-     { korean: "스스로", english: "self-care" },
-     { korean: "문제 해결", english: "problem-solving" },
-     { korean: "사회 정서", english: "social-emotion" },
-     { korean: "수용 언어", english: "receptive-language" },
-     { korean: "표현 언어", english: "expressive-language" },
+    { korean: "대 근육", english: "gross-motor" },
+    { korean: "소 근육", english: "fine-motor" },
+    { korean: "스스로", english: "self-care" },
+    { korean: "문제 해결", english: "problem-solving" },
+    { korean: "사회 정서", english: "social-emotion" },
+    { korean: "수용 언어", english: "receptive-language" },
+    { korean: "표현 언어", english: "expressive-language" },
   ];
 }
 
@@ -122,13 +122,13 @@ export function getEnglishCategoryName(koreanName: string): string {
   }
 
   const staticMapping: Record<string, string> = {
-     "대 근육": "gross-motor",
-     "소 근육": "fine-motor",
-     스스로: "self-care",
-     "문제 해결": "problem-solving",
-     "사회 정서": "social-emotion",
-     "수용 언어": "receptive-language",
-     "표현 언어": "expressive-language",
+    "대 근육": "gross-motor",
+    "소 근육": "fine-motor",
+    스스로: "self-care",
+    "문제 해결": "problem-solving",
+    "사회 정서": "social-emotion",
+    "수용 언어": "receptive-language",
+    "표현 언어": "expressive-language",
   }
 
   // 정적 매핑에서 찾기
@@ -294,7 +294,7 @@ export function parseDetailedActivity(rawData: string, activityNumber: number): 
       if (!result.levels) result.levels = {} as any
       const levelNum = levelMatch[1]
       const levelContent = levelMatch[2]
-      ;(result.levels as any)[`level${levelNum}`] = levelContent
+        ; (result.levels as any)[`level${levelNum}`] = levelContent
       continue
     }
 

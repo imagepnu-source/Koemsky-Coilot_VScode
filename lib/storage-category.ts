@@ -43,9 +43,16 @@ export function saveCategoryRecord(categoryRecord: CategoryRecord): void {
   try {
     if (supabase) {
       const profile = loadChildProfile()
-      const safeName = (profile.name || "").trim() || "아기"
+      const rawName = (profile.name || "").trim()
+
+      // 이름이 비어 있거나 기본 플레이스홀더("아기")인 경우에는
+      // 잘못된 child_id("아기_YYYY-MM-DD")로 Supabase에 동기화하지 않는다.
+      if (!rawName || rawName === "아기") {
+        return
+      }
+
       const datePart = profile.birthDate.toISOString().split("T")[0]
-      const childId = `${safeName}_${datePart}`
+      const childId = `${rawName}_${datePart}`
 
       ;(async () => {
         try {

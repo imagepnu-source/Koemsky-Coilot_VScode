@@ -63,6 +63,7 @@ function renderInlineBold(text: string, keyPrefix: string): React.ReactNode[] {
     const boldText = t.slice(start + 2, end);
     // 2) 스타일 마커 처리:
     //    - **텍스트**(+2px, red)  -> 굵게 + 글자 크기 +2px, 빨간색
+    //    - **텍스트**(+3px, red)  -> 굵게 + 글자 크기 +3px, 빨간색
     //    - **텍스트**(blue)       -> 굵게 + 파란색
     let className = "font-bold";
     let style: React.CSSProperties | undefined;
@@ -71,19 +72,20 @@ function renderInlineBold(text: string, keyPrefix: string): React.ReactNode[] {
     const BLUE_MARKER = "(blue)";
     const RED_MARKER = "(red)";
 
-    // (+2px, red) 또는 (+2px,red)
-    const sizeRedMatch = rest.match(/^\(\+2px,\s*red\)/);
-    // (+2px, blue) 또는 (+2px,blue)
-    const sizeBlueMatch = rest.match(/^\(\+2px,\s*blue\)/);
-
-    if (sizeRedMatch) {
-      className += " text-red-500";
-      style = { fontSize: "17px" };
-      rest = rest.slice(sizeRedMatch[0].length);
-    } else if (sizeBlueMatch) {
-      className += " text-blue-500";
-      style = { fontSize: "17px" };
-      rest = rest.slice(sizeBlueMatch[0].length);
+    // (+Npx, red|blue) 형태를 모두 지원합니다. (예: +2px, +3px)
+    const sizeColorMatch = rest.match(/^\(\+(\d+)px,\s*(red|blue)\)/);
+    if (sizeColorMatch) {
+      const deltaPx = Number.parseInt(sizeColorMatch[1], 10) || 0;
+      const color = sizeColorMatch[2];
+      if (color === "red") {
+        className += " text-red-500";
+      } else if (color === "blue") {
+        className += " text-blue-500";
+      }
+      const baseSize = 15; // 본문 기본 폰트 15px 기준
+      const fontSize = baseSize + deltaPx;
+      style = { fontSize: `${fontSize}px` };
+      rest = rest.slice(sizeColorMatch[0].length);
     } else if (rest.startsWith(BLUE_MARKER)) {
       className += " text-blue-500";
       rest = rest.slice(BLUE_MARKER.length);

@@ -106,7 +106,7 @@ export interface GraphDataEntry {
 }
 
 
-import { getGlobalKoreanNames, initializeGlobalCategories, generateCategoryColors } from "./global-categories"
+import { getGlobalKoreanNames, initializeGlobalCategories, generateCategoryColors } from "./global-categories.ts"
 
 // Component: getPlayCategories — entry point
 

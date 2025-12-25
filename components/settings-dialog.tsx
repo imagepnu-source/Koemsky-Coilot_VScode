@@ -1068,6 +1068,12 @@ export function SettingsDialog({
                     type={showCurrentPassword ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleVerifyCurrentPassword();
+                      }
+                    }}
                     placeholder="현재 비밀번호"
                   />
                   <button
@@ -1164,6 +1170,15 @@ export function SettingsDialog({
                     type={showNewPassword ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const next = document.getElementById("confirmPasswordPopup");
+                        if (next instanceof HTMLInputElement) {
+                          next.focus();
+                        }
+                      }
+                    }}
                     placeholder="8자 이상 새 비밀번호"
                   />
                   <button
@@ -1216,6 +1231,12 @@ export function SettingsDialog({
                     type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleChangePassword();
+                      }
+                    }}
                     placeholder="새 비밀번호 다시 입력"
                   />
                   <button

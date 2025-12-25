@@ -108,6 +108,17 @@ export default function UIDesignDialog() {
     };
   }, [modalSize]);
 
+  // 외부에서 같은 UI Set 다이얼로그를 열 수 있도록, 전역 이벤트를 수신합니다.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const openHandler = () => setOpen(true);
+    window.addEventListener('komensky:openUIDesign', openHandler as EventListener);
+    return () => {
+      window.removeEventListener('komensky:openUIDesign', openHandler as EventListener);
+    };
+  }, []);
+
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     dragRef.current.dragging = true;
@@ -151,15 +162,6 @@ export default function UIDesignDialog() {
 
   return (
     <>
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded"
-        data-ui="design-open"
-        onClick={() => setOpen(true)}
-      >
-        uiSet
-      </button>
-
       {open && (
         <div
           role="dialog"
@@ -185,7 +187,13 @@ export default function UIDesignDialog() {
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b cursor-grab" onMouseDown={startDrag}>
               <h2 className="text-lg font-bold">uiSet 개발자 이외는 사용 금지, 즉시 Close!</h2>
               <div className="flex items-center gap-2">
-                <button type="button" className="px-2 py-1 text-sm border rounded" onClick={persist}>Save</button>
+                <button
+                  type="button"
+                  className="px-2 py-1 text-sm border rounded bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={persist}
+                >
+                  Save
+                </button>
                 <button type="button" className="px-2 py-1 text-sm border rounded" onClick={() => setOpen(false)}>Close</button>
               </div>
             </div>
@@ -488,13 +496,7 @@ export default function UIDesignDialog() {
               </Tabs>
             </div>
 
-            {/* footer: fixed / always visible */}
-            <div className="border-t px-4 py-3" style={{ flex: '0 0 auto' }}>
-              <div className="flex justify-end gap-2">
-                <button className="px-3 py-1 border rounded" onClick={persist}>Save</button>
-                <button className="px-3 py-1 border rounded" onClick={() => setOpen(false)}>Close</button>
-              </div>
-            </div>
+            {/* footer intentionally left empty: 상단 Save/Close만 사용 */}
            </div>
          </div>
       )}

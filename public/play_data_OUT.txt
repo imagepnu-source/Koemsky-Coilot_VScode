@@ -1,0 +1,20 @@
+대 근육, gross-motor
+Number	Korean Title	Age Range
+
+소 근육, fine-motor
+Number	Korean Title	Age Range
+
+스스로, self-care
+Number	Korean Title	Age Range
+
+문제 해결, problem-solving
+Number	Korean Title	Age Range
+
+사회 정서, social-emotion
+Number	Korean Title	Age Range
+
+수용 언어, receptive-language
+Number	Korean Title	Age Range
+
+표현 언어, expressive-language
+Number	Korean Title	Age Range

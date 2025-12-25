@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { loadUIDesignCfg, saveUIDesignCfg, saveGlobalUIDesignCfg } from '@/lib/ui-design';
+import { supabase } from "@/lib/supabaseClient";
   const handleApplyCurrentUIToAllUsers = async () => {
     try {
       const confirmApply = window.confirm(
@@ -35,12 +36,27 @@ interface AdminDialogProps {
 
 
 export function AdminDialog({ open, onOpenChange, childProfile, playData }: AdminDialogProps) {
-  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  // NOTE: 2025-12-18 임시 설정 - 관리자 비밀번호 없이 바로 관리자 기능 사용
+  const [adminUnlocked, setAdminUnlocked] = useState(true);
   const [adminPassword, setAdminPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [testDataCount, setTestDataCount] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [tempMessage, setTempMessage] = useState("");
+
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [supabaseTable, setSupabaseTable] = useState<string>("children");
+  const [supabaseRows, setSupabaseRows] = useState<any[] | null>(null);
+  const [supabaseLoading, setSupabaseLoading] = useState(false);
+  const [supabaseError, setSupabaseError] = useState<string | null>(null);
+
+  const TABLE_OPTIONS = [
+    { value: "children", label: "children (아이 기본 정보)" },
+    { value: "category_records", label: "category_records (카테고리 발달 기록)" },
+    { value: "play_states", label: "play_states (찜/댓글/상태)" },
+    { value: "subscriptions", label: "subscriptions (구독 상태)" },
+    { value: "user_profiles", label: "user_profiles (보호자 정보)" },
+  ] as const;
 
   const handleAdminAuth = () => {
     if (adminPassword === "Christ4HGe!") {
@@ -153,6 +169,34 @@ export function AdminDialog({ open, onOpenChange, childProfile, playData }: Admi
     }
   };
 
+  const loadSupabaseTable = async (table: string) => {
+    if (!supabase) {
+      setSupabaseError("Supabase 설정이 필요합니다 (URL/KEY 확인)");
+      setSupabaseRows(null);
+      return;
+    }
+
+    setSupabaseLoading(true);
+    setSupabaseError(null);
+
+    try {
+      const { data, error } = await supabase.from(table).select("*").limit(50);
+      if (error) {
+        console.warn("[AdminDialog] Supabase table fetch error", table, error);
+        setSupabaseError(error.message || "테이블을 불러오는 중 오류가 발생했습니다.");
+        setSupabaseRows(null);
+      } else {
+        setSupabaseRows((data as any[]) ?? []);
+      }
+    } catch (e: any) {
+      console.warn("[AdminDialog] Supabase table fetch unexpected error", table, e);
+      setSupabaseError(e?.message || "테이블을 불러오는 중 오류가 발생했습니다.");
+      setSupabaseRows(null);
+    } finally {
+      setSupabaseLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" style={{ width: '80vw', maxWidth: '480px', maxHeight: '70vh', overflowY: 'auto' }}>
@@ -170,6 +214,12 @@ export function AdminDialog({ open, onOpenChange, childProfile, playData }: Admi
                   type={showPassword ? "text" : "password"}
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAdminAuth();
+                    }
+                  }}
                   placeholder="관리자 비밀번호를 입력하세요"
                   className="border rounded px-2 py-1 w-full"
                   autoComplete="current-password"
@@ -235,18 +285,29 @@ export function AdminDialog({ open, onOpenChange, childProfile, playData }: Admi
             <Separator />
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">2. UI Set 전역 적용</h3>
+              <h3 className="text-sm font-medium">2. UI Set 바꾸기</h3>
               <p className="text-xs text-gray-500">
-                지금 이 PC·브라우저에서 보이는 UI 설정을 Supabase에 저장하고,
-                모든 사용자가 앱을 열 때 같은 UI를 사용하도록 강제합니다.
+                아래 uiSet 버튼으로 UI 설정 창을 열고,
+                그 안에서 Save를 누르면 모든 사용자가 같은 UI를 사용하도록 저장됩니다.
               </p>
-              <Button
-                variant="outline"
-                className="w-full bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                onClick={handleApplyCurrentUIToAllUsers}
-              >
-                현재 UI 설정을 모든 사용자에게 적용
-              </Button>
+              <div className="space-y-2">
+                {/* Top 컨테이너 오른쪽 위 uiSet 과 동일한 UI 설정 창 열기 */}
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    try {
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new Event('komensky:openUIDesign'));
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                >
+                  uiSet
+                </Button>
+              </div>
             </div>
 
             <Separator />
@@ -261,6 +322,88 @@ export function AdminDialog({ open, onOpenChange, childProfile, playData }: Admi
                   UI 설정 복원
                 </Button>
               </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">4. Supabase 내용 확인</h3>
+              <p className="text-xs text-gray-500">
+                주요 Supabase 테이블(children, category_records, play_states 등)의 현재 내용을 읽기 전용으로 확인합니다.
+              </p>
+              <Button
+                variant="outline"
+                className="w-full bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                onClick={() => {
+                  setShowSupabaseModal(true);
+                  loadSupabaseTable(supabaseTable);
+                }}
+              >
+                Supabase 내용 확인
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {adminUnlocked && showSupabaseModal && (
+          <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 overflow-y-auto">
+            <div className="bg-white rounded-md shadow-lg w-[90vw] max-w-3xl max-h-[80vh] mt-8 p-4 flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold">Supabase 내용 확인</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowSupabaseModal(false)}
+                  className="text-xs text-gray-500 hover:text-gray-800"
+                >
+                  닫기
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                <label className="text-xs text-gray-600">테이블 선택:</label>
+                <select
+                  className="border rounded px-2 py-1 text-xs"
+                  value={supabaseTable}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setSupabaseTable(next);
+                    loadSupabaseTable(next);
+                  }}
+                >
+                  {TABLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1"
+                  onClick={() => loadSupabaseTable(supabaseTable)}
+                  disabled={supabaseLoading}
+                >
+                  새로고침
+                </Button>
+              </div>
+              <div className="flex-1 border rounded bg-gray-50 overflow-auto text-[11px] leading-snug p-2">
+                {supabaseLoading && <div>불러오는 중입니다...</div>}
+                {!supabaseLoading && supabaseError && (
+                  <div className="text-red-600 whitespace-pre-wrap">{supabaseError}</div>
+                )}
+                {!supabaseLoading && !supabaseError && supabaseRows && (
+                  supabaseRows.length > 0 ? (
+                    <pre className="whitespace-pre-wrap break-all text-[10px]">
+                      {JSON.stringify(supabaseRows, null, 2)}
+                    </pre>
+                  ) : (
+                    <div className="text-xs text-gray-500">표시할 데이터가 없습니다. (0 rows)</div>
+                  )
+                )}
+              </div>
+              <p className="mt-2 text-[10px] text-gray-500">
+                이 창에서는 Supabase 내용을 읽기만 할 수 있습니다. (쓰기/삭제 불가)
+              </p>
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 interface MenuItem {
@@ -32,14 +32,13 @@ function getMenu(
       onClick: () => onOpenChildSettings && onOpenChildSettings(),
     },
     {
+      label: "첫 소개",
+      onClick: () => onOpenIntro && onOpenIntro(),
+    },
+    {
       label: "관리자 전용",
       onClick: () => onOpenAdminTools && onOpenAdminTools(),
     },
-    {
-      label: "Intro",
-      onClick: () => onOpenIntro && onOpenIntro(),
-    },
-    { label: "Supabase 내용 확인" },
     {
       label: "끝내기",
       onClick: () => {
@@ -70,9 +69,44 @@ export default function HamburgerMenu({
   onOpenIntro,
 }: HamburgerMenuProps) {
   const [open, setOpen] = useState(false);
+  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // ESC 키로 메뉴 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  // 바깥 영역 클릭 시 메뉴 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const root = containerRef.current;
+      if (!root) return;
+      if (!root.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [open]);
   const menu = getMenu(onOpenGuardianSettings, onOpenChildSettings, onOpenAdminTools, onOpenIntro);
   return (
-    <div style={{ position: "fixed", top: 16, left: 16, zIndex: 1000 }}>
+    <div
+      ref={containerRef}
+      style={{ position: "fixed", top: 16, left: 16, zIndex: 1000 }}
+    >
       <button
         aria-label="메뉴 열기"
         onClick={() => setOpen((v) => !v)}
@@ -90,7 +124,7 @@ export default function HamburgerMenu({
             border: "1px solid #ddd",
             borderRadius: 8,
             boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-            minWidth: 220,
+            minWidth: 170,
             padding: 12,
           }}
         >
@@ -99,17 +133,21 @@ export default function HamburgerMenu({
               <li key={item.label} style={{ marginBottom: 8 }}>
                 <button
                   style={{
-                    background: "none",
+                    background: hoveredLabel === item.label ? "#eef2ff" : "none",
                     border: "none",
-                    padding: 0,
+                    padding: "2px 6px",
                     fontWeight: 600,
                     cursor: item.onClick ? "pointer" : "default",
                     color: item.onClick ? "#0070f3" : undefined,
+                    borderRadius: 4,
+                    textAlign: "left",
                   }}
                   onClick={() => {
                     if (item.onClick) item.onClick();
                     setOpen(false);
                   }}
+                  onMouseEnter={() => setHoveredLabel(item.label)}
+                  onMouseLeave={() => setHoveredLabel((current) => (current === item.label ? null : current))}
                   tabIndex={0}
                 >
                   {item.label}
